@@ -2,21 +2,12 @@
 
 namespace StreamWrapper2;
 
-/**
- * @param \Exception $e
- * @return null
- * @throws \Exception
- */
-function throw_(\Exception $e) {
-    throw $e;
-}
-
 interface StreamWrapper2 {
     /**
      * @param string $path
-     * @return Iterator
+     * @return \Iterator
      */
-    public function openDir($path);
+    public function readDirectory($path);
 
     /**
      * @param string $path
@@ -24,7 +15,7 @@ interface StreamWrapper2 {
      * @param bool   $recursive
      * @return bool
      */
-    public function mkdir($path, $mode, $recursive);
+    public function createDirectory($path, $mode, $recursive);
 
     /**
      * @param string $path1
@@ -37,24 +28,24 @@ interface StreamWrapper2 {
      * @param string $path
      * @return bool
      */
-    public function rmdir($path);
+    public function removeDirectory($path);
 
     /**
-     * @param string   $path
-     * @param FileMode $mode
-     * @param bool     $read
-     * @param bool     $write
-     * @return null|Stream
+     * @param string       $path
+     * @param FileOpenMode $mode
+     * @param bool         $read
+     * @param bool         $write
+     * @return null|OpenFile
      */
-    public function openFile($path, FileMode $mode, $read, $write);
+    public function openFile($path, FileOpenMode $mode, $read, $write);
 
     /**
      * @param string $path
-     * @param int    $mtime
-     * @param int    $atime
+     * @param int    $lastModified
+     * @param int    $lastAccessed
      * @return bool
      */
-    public function touch($path, $mtime, $atime);
+    public function setLastModified($path, $lastModified, $lastAccessed);
 
     /**
      * @param string $path
@@ -105,7 +96,7 @@ interface StreamWrapper2 {
     public function delete($path);
 }
 
-interface Stream {
+interface OpenFile {
     /**
      * @param int $count
      * @return string
@@ -120,7 +111,7 @@ interface Stream {
     /**
      * @return bool
      */
-    public function isEof();
+    public function isEOF();
 
     /**
      * @return void
@@ -187,104 +178,323 @@ interface Stream {
     public function setWriteBuffer($size);
 }
 
-abstract class Enum {
-    protected static $values;
+/**
+ * The only way to define an abstract static method
+ * is to put it in an interface and implement it.
+ */
+interface EnumAbstract {
+    /** @return array */
+    static function values();
+}
 
-    /** @var int|string */
+abstract class Enum implements EnumAbstract {
+    /** @var string */
     private $value;
 
     /**
-     * @param int|string $value
+     * @param string $value
      * @throws \Exception
      */
     function __construct($value) {
-        if (!in_array($value, self::$values, true) {
-            throw new \UnexpectedValueException("'$value' must be one of " . join(', ', static::$values));
-        } else {
-            $this->value = $value;
+        if (array_diff(array($value), static::values())) {
+            throw new \Exception("'$value' must be one of '" . join("', '", static::values()) . "'");
         }
+        $this->value = (string)$value;
     }
 
-    function value() { return $this->value; }
-    function equals(self $that) { return $this->value === $that->value; }
+    final function toString() { return $this->value; }
+    final function equals(self $that) { return $this->value === $that->value; }
 }
 
 class Lock extends Enum {
-    const SHARED    = LOCK_SH;
-    const EXCLUSIVE = LOCK_EX;
-    const NONE      = LOCK_UN;
+    const SHARED    = 'shared';
+    const EXCLUSIVE = 'exclusive';
+    const NONE      = 'none';
 
-    protected static $values = [
+    private static $values = [
         self::EXCLUSIVE,
         self::SHARED,
         self::NONE,
     ];
+
+    static function values() { return self::$values; }
+}
+
+/**
+ * @param int $int
+ * @param int $offset
+ * @return bool
+ */
+function get_bit($int, $offset) {
+    return (bool)((1 << $offset) & $int);
+}
+
+class FileMode {
+    /** @var bool */
+    public $execSetUserID = false;
+    /** @var bool */
+    public $execSetGroupID = false;
+    /** @var bool */
+    public $sticky = false;
+    /** @var ReadWriteExecute */
+    public $user;
+    /** @var ReadWriteExecute */
+    public $group;
+    /** @var ReadWriteExecute */
+    public $other;
+
+    public function __construct() {
+        $this->user  = new ReadWriteExecute;
+        $this->group = new ReadWriteExecute;
+        $this->other = new ReadWriteExecute;
+    }
+
+    public function __clone() {
+        $this->user  = clone $this->user;
+        $this->group = clone $this->group;
+        $this->other = clone $this->other;
+    }
+
+    /**
+     * @param int $int
+     * @return self
+     */
+    public static function fromInt($int) {
+        $self                 = new self;
+        $self->execSetUserID  = get_bit($int, 11);
+        $self->execSetGroupID = get_bit($int, 10);
+        $self->sticky         = get_bit($int, 9);
+        $self->user           = ReadWriteExecute::fromInt($int >> 6);
+        $self->group          = ReadWriteExecute::fromInt($int >> 3);
+        $self->other          = ReadWriteExecute::fromInt($int >> 0);
+        return $self;
+    }
+
+    /**
+     * @return int
+     */
+    public function toInt() {
+        $int =
+            ($this->execSetUserID << 2) &
+            ($this->execSetGroupID << 1) &
+            ($this->sticky << 0);
+
+        return
+            ($int << 9) &
+            ($this->user->toInt() << 6) &
+            ($this->group->toInt() << 3) &
+            ($this->other->toInt() << 0);
+    }
+}
+
+class ReadWriteExecute {
+    /** @var bool */
+    public $read = false;
+    /** @var bool */
+    public $write = false;
+    /** @var bool */
+    public $execute = false;
+
+    /**
+     * @param int $int
+     * @return ReadWriteExecute
+     */
+    public static function fromInt($int) {
+        $self          = new self;
+        $self->read    = get_bit($int, 2);
+        $self->write   = get_bit($int, 1);
+        $self->execute = get_bit($int, 0);
+        return $self;
+    }
+
+    /**
+     * @return int
+     */
+    public function toInt() {
+        return
+            ($this->read << 2) &
+            ($this->write << 1) &
+            ($this->execute << 0);
+    }
+}
+
+class FileType extends Enum {
+    const PIPE   = 'pipe';
+    const CHAR   = 'char';
+    const DIR    = 'dir';
+    const BLOCK  = 'block';
+    const FILE   = 'file';
+    const LINK   = 'link';
+    const SOCKET = 'socket';
+    const DOOR   = 'door';
+
+    private static $chars = [
+        self::PIPE   => 'p',
+        self::CHAR   => 'c',
+        self::DIR    => 'd',
+        self::BLOCK  => 'b',
+        self::FILE   => '-',
+        self::LINK   => 'l',
+        self::SOCKET => 's',
+        self::DOOR   => 'D',
+    ];
+
+    private static $ints = [
+        self::PIPE   => 001,
+        self::CHAR   => 002,
+        self::DIR    => 004,
+        self::BLOCK  => 006,
+        self::FILE   => 010,
+        self::LINK   => 012,
+        self::SOCKET => 014,
+        self::DOOR   => 015,
+    ];
+
+    private static $values = [
+        self::PIPE,
+        self::CHAR,
+        self::DIR,
+        self::BLOCK,
+        self::FILE,
+        self::LINK,
+        self::SOCKET,
+        self::DOOR,
+    ];
+
+    /**
+     * @param int $int
+     * @return FileType
+     */
+    static function fromInt($int) {
+        return new self(array_flip(self::$ints)[$int]);
+    }
+
+    static function values() { return self::$values; }
+    final function toChar() { return self::$chars[$this->toString()]; }
+    final function toInt() { return self::$ints[$this->toString()]; }
 }
 
 class FileAttributes {
-    public $dev     = 0;
-    public $ino     = 0;
-    public $mode    = 0;
-    public $uid     = 0;
-    public $gid     = 0;
-    public $size    = 0;
-    public $atime   = 0;
-    public $mtime   = 0;
-    public $ctime   = 0;
+    /** @var FileType */
+    public $type;
+    /** @var FileMode */
+    public $mode;
+    /** @var int */
+    public $size = 0;
 
-    public function toArray() {
-        $blockSize = 4096;
-        return [
-            'dev'     => $this->dev,
-            'ino'     => $this->ino,
-            'mode'    => $this->mode,
-            'nlink'   => 1,
-            'uid'     => $this->uid,
-            'gid'     => $this->gid,
-            'rdev'    => 0,
-            'size'    => $this->size,
-            'atime'   => $this->atime,
-            'mtime'   => $this->mtime,
-            'ctime'   => $this->ctime,
-            'blksize' => -1,
-            'blocks'  => (int)floor($this->size / 512),
-        ];
+    /** @var int */
+    public $userID = 0;
+    /** @var int */
+    public $groupID = 0;
+
+    /** @var int Last time the file was read */
+    public $lastAccessed = 0;
+    /** @var int Last time the file contents was modified */
+    public $lastModified = 0;
+    /** @var int Last time the file contents or metadata were modified */
+    public $lastChanged = 0;
+
+    public function __construct() {
+        $this->mode = new FileMode;
+    }
+
+    public function __clone() {
+        $this->mode = clone $this->mode;
+        $this->type = clone $this->type;
     }
 }
 
 class SeekType extends Enum {
-    const CURRENT = SEEK_CUR;
-    const END     = SEEK_END;
-    const START   = SEEK_SET;
+    /**
+     * Set position relative to the current position.
+     */
+    const CURRENT = 'current';
+    /**
+     * Set position relative to the end of the file.
+     */
+    const END = 'end';
+    /**
+     * Set position relative to the start of the file.
+     */
+    const START = 'start';
 
-    protected static $values = [
+    private static $values = [
         self::CURRENT,
         self::END,
         self::START,
     ];
+
+    static function values() { return self::$values; }
 }
 
-class FileMode extends Enum {
-    const NO_CREATE          = 'r';
-    const CREATE_OR_TRUNCATE = 'w';
-    const CREATE_OR_APPEND   = 'a';
-    const CREATE_OR_KEEP     = 'c';
-    const CREATE_ONLY        = 'x';
+class FileOpenMode extends Enum {
+    /**
+     * Read an existing file and error if it doesn't exist
+     */
+    const NO_CREATE = 'r';
 
-    protected static $values = [
+    /**
+     * Create a new file and truncate one if it already exists
+     */
+    const CREATE_OR_TRUNCATE = 'w';
+
+    /**
+     * Create a new file and append to one if it already exists.
+     *
+     * !! Important: Under this mode, all writes append to the file
+     * regardless of the position later set with fseek().
+     */
+    const CREATE_OR_APPEND = 'a';
+
+    /**
+     * Create a new file and start writing from position 0 if it already exists.
+     */
+    const CREATE_OR_KEEP = 'c';
+
+    /**
+     * Only create a new file. Error if it already exists.
+     */
+    const CREATE_ONLY = 'x';
+
+    private static $values = [
         self::NO_CREATE,
         self::CREATE_OR_TRUNCATE,
         self::CREATE_OR_APPEND,
         self::CREATE_OR_KEEP,
         self::CREATE_ONLY,
     ];
+
+    static function values() { return self::$values; }
 }
 
 final class StreamWrapper2Impl extends \streamWrapper {
     const SCHEME = 'sw2';
-    /** @var Iterator */
+
+    private static function statResult(FileAttributes $stat = null) {
+        if (!$stat) {
+            return false;
+        } else {
+            return [
+                'dev'     => 0,
+                'ino'     => 0,
+                'mode'    => $stat->mode->toInt() | ($stat->type->toInt() << 12),
+                'nlink'   => 1,
+                'uid'     => $stat->userID,
+                'gid'     => $stat->groupID,
+                'rdev'    => 0,
+                'size'    => $stat->size,
+                'atime'   => $stat->lastAccessed,
+                'mtime'   => $stat->lastModified,
+                'ctime'   => $stat->lastChanged,
+                'blksize' => -1,
+                'blocks'  => -1,
+            ];
+        }
+    }
+
+    /** @var \Iterator|null */
     private $dir;
-    /** @var Stream */
+    /** @var OpenFile|null */
     private $stream;
 
     public function __construct() {
@@ -294,12 +504,16 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function dir_closedir() {
-        $this->dir = null;
-        return true;
+        if ($this->dir) {
+            $this->dir = null;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public function dir_opendir($path, $options) {
-        $this->dir = $this->instance()->openDir($path);
+        $this->dir = $this->instance()->readDirectory($path);
         return !!$this->dir;
     }
 
@@ -319,7 +533,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function mkdir($path, $mode, $options) {
-        return $this->instance()->mkdir($path, $mode, !!($options | STREAM_MKDIR_RECURSIVE));
+        return $this->instance()->createDirectory($path, $mode, (bool)($options & STREAM_MKDIR_RECURSIVE));
     }
 
     public function rename($path_from, $path_to) {
@@ -327,7 +541,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function rmdir($path, $options) {
-        return $this->instance()->rmdir($path);
+        return $this->instance()->removeDirectory($path);
     }
 
     public function stream_cast($cast_as) {
@@ -339,7 +553,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_eof() {
-        return $this->stream->isEof();
+        return $this->stream->isEOF();
     }
 
     public function stream_flush() {
@@ -347,24 +561,22 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_lock($operation) {
-        $block = !($operation & LOCK_NB);
-        if ($operation & LOCK_SH) {
-            $lock = new Lock(Lock::SHARED);
-        } else if ($operation & LOCK_EX) {
-            $lock = new Lock(Lock::EXCLUSIVE);
-        } else if ($operation & LOCK_UN) {
-            $lock = new Lock(Lock::NONE);
-        } else {
-            return false;
-        }
-        return $this->stream->setLock($lock, $block);
+        static $map = [
+            LOCK_SH => Lock::SHARED,
+            LOCK_EX => Lock::EXCLUSIVE,
+            LOCK_UN => Lock::NONE,
+        ];
+        return $this->stream->setLock(
+            new Lock($map[$operation & !LOCK_UN]),
+            !($operation & LOCK_NB)
+        );
     }
 
     public function stream_metadata($path, $option, $value) {
         $instance = $this->instance();
         switch ($option) {
             case STREAM_META_TOUCH:
-                return $instance->touch($path, $value[0], $value[1]);
+                return $instance->setLastModified($path, $value[0], $value[1]);
             case STREAM_META_OWNER:
                 return $instance->setUserByID($path, $value);
             case STREAM_META_OWNER_NAME:
@@ -382,16 +594,16 @@ final class StreamWrapper2Impl extends \streamWrapper {
 
     public function stream_open($path, $mode, $options, &$opened_path) {
         if ($options & STREAM_USE_PATH) {
-            throw new Exception('STREAM_USE_PATH is not supported');
+            throw new \Exception('STREAM_USE_PATH is not supported');
         }
 
-        $mode_ = new FileMode(str_replace(['+', 'b', 't'], '', $string));
+        $mode_ = new FileOpenMode(str_replace(['+', 'b', 't'], '', $mode));
 
         $this->stream = $this->instance()->openFile(
             $path,
             $mode_,
-            $mode_->value() === 'r' || strpos($mode, '+') !== false,
-            $mode_->value() !== 'r' || strpos($mode, '+') !== false
+            $mode_->toString() === 'r' || strpos($mode, '+') !== false,
+            $mode_->toString() !== 'r' || strpos($mode, '+') !== false
         );
         return !!$this->stream;
     }
@@ -401,7 +613,12 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_seek($offset, $whence = SEEK_SET) {
-        return $this->stream->setPosition($offset, new SeekType($whence));
+        static $map = [
+            SEEK_SET => SeekType::START,
+            SEEK_CUR => SeekType::CURRENT,
+            SEEK_END => SeekType::END,
+        ];
+        return $this->stream->setPosition($offset, new SeekType($map[$whence]));
     }
 
     public function stream_set_option($option, $arg1, $arg2) {
@@ -425,7 +642,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_stat() {
-        return $this->stream->getAttributes()->toArray();
+        return self::statResult($this->stream->getAttributes());
     }
 
     public function stream_tell() {
@@ -445,7 +662,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function url_stat($path, $flags) {
-        return $this->instance()->getAttributes($path, !($flags & STREAM_URL_STAT_LINK));
+        return self::statResult($this->instance()->getAttributes($path, !($flags & STREAM_URL_STAT_LINK)));
     }
 
     /**

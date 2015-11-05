@@ -7,7 +7,7 @@ if (!class_exists('streamWrapper')) {
     abstract class streamWrapper {
         /**
          * @link http://php.net/manual/en/class.streamwrapper.php#streamwrapper.props.context
-         * @var resource
+         * @var resource|null
          */
         public $context;
 
