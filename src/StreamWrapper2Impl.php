@@ -10,12 +10,12 @@ interface StreamWrapper2 {
     public function readDirectory($path);
 
     /**
-     * @param string $path
-     * @param int    $mode
-     * @param bool   $recursive
+     * @param string   $path
+     * @param FileMode $mode
+     * @param bool     $recursive
      * @return bool
      */
-    public function createDirectory($path, $mode, $recursive);
+    public function createDirectory($path, FileMode $mode, $recursive);
 
     /**
      * @param string $path1
@@ -533,7 +533,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function mkdir($path, $mode, $options) {
-        return $this->instance()->createDirectory($path, $mode, (bool)($options & STREAM_MKDIR_RECURSIVE));
+        return $this->instance()->createDirectory($path, FileMode::fromInt($mode), (bool)($options & STREAM_MKDIR_RECURSIVE));
     }
 
     public function rename($path_from, $path_to) {
