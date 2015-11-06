@@ -76,11 +76,11 @@ interface StreamWrapper2 {
     public function setGroupByName($path, $groupName);
 
     /**
-     * @param string $path
-     * @param int    $permissions
+     * @param string   $path
+     * @param FileMode $mode
      * @return bool
      */
-    public function setPermissions($path, $permissions);
+    public function setPermissions($path, FileMode $mode);
 
     /**
      * @param string $path
@@ -586,7 +586,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
             case STREAM_META_GROUP_NAME:
                 return $instance->setGroupByName($path, $value);
             case STREAM_META_ACCESS:
-                return $instance->setPermissions($path, $value);
+                return $instance->setPermissions($path, FileMode::fromInt($value));
             default:
                 return false;
         }
