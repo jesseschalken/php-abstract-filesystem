@@ -231,9 +231,9 @@ function get_bit($int, $offset) {
 
 class FileMode {
     /** @var bool */
-    public $execSetUserID = false;
+    public $setuid = false;
     /** @var bool */
-    public $execSetGroupID = false;
+    public $setgid = false;
     /** @var bool */
     public $sticky = false;
     /** @var ReadWriteExecute */
@@ -260,13 +260,13 @@ class FileMode {
      * @return self
      */
     public static function fromInt($int) {
-        $self                 = new self;
-        $self->execSetUserID  = get_bit($int, 11);
-        $self->execSetGroupID = get_bit($int, 10);
-        $self->sticky         = get_bit($int, 9);
-        $self->user           = ReadWriteExecute::fromInt($int >> 6);
-        $self->group          = ReadWriteExecute::fromInt($int >> 3);
-        $self->other          = ReadWriteExecute::fromInt($int >> 0);
+        $self         = new self;
+        $self->setuid = get_bit($int, 11);
+        $self->setgid = get_bit($int, 10);
+        $self->sticky = get_bit($int, 9);
+        $self->user   = ReadWriteExecute::fromInt($int >> 6);
+        $self->group  = ReadWriteExecute::fromInt($int >> 3);
+        $self->other  = ReadWriteExecute::fromInt($int >> 0);
         return $self;
     }
 
@@ -275,8 +275,8 @@ class FileMode {
      */
     public function toInt() {
         $int =
-            ($this->execSetUserID << 2) &
-            ($this->execSetGroupID << 1) &
+            ($this->setuid << 2) &
+            ($this->setgid << 1) &
             ($this->sticky << 0);
 
         return
