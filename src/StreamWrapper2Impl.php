@@ -114,11 +114,6 @@ interface OpenFile {
     public function isEOF();
 
     /**
-     * @return void
-     */
-    public function close();
-
-    /**
      * @return bool
      */
     public function flush();
@@ -549,7 +544,12 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_close() {
-        $this->stream->close();
+        if ($this->stream) {
+            $this->stream = null;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public function stream_eof() {
