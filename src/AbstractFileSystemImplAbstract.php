@@ -2,12 +2,12 @@
 
 namespace StreamWrapper2;
 
-interface StreamWrapper2 {
+abstract class AbstractFileSystem {
     /**
      * @param string $path
      * @return \Iterator
      */
-    public function readDirectory($path);
+    public abstract function readDirectory($path);
 
     /**
      * @param string   $path
@@ -15,20 +15,20 @@ interface StreamWrapper2 {
      * @param bool     $recursive
      * @return bool
      */
-    public function createDirectory($path, FilePermissions $mode, $recursive);
+    public abstract function createDirectory($path, FilePermissions $mode, $recursive);
 
     /**
      * @param string $path1
      * @param string $path2
      * @return bool
      */
-    public function rename($path1, $path2);
+    public abstract function rename($path1, $path2);
 
     /**
      * @param string $path
      * @return bool
      */
-    public function removeDirectory($path);
+    public abstract function removeDirectory($path);
 
     /**
      * @param string       $path
@@ -36,9 +36,9 @@ interface StreamWrapper2 {
      * @param bool         $usePath
      * @param bool         $reportErrors
      * @param string       $openedPath
-     * @return null|OpenFile
+     * @return null|AbstractOpenFile
      */
-    public function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath);
+    public abstract function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath);
 
     /**
      * @param string $path
@@ -46,42 +46,42 @@ interface StreamWrapper2 {
      * @param int    $lastAccessed
      * @return bool
      */
-    public function setLastModified($path, $lastModified, $lastAccessed);
+    public abstract function setLastModified($path, $lastModified, $lastAccessed);
 
     /**
      * @param string $path
      * @param int    $userID
      * @return bool
      */
-    public function setUserByID($path, $userID);
+    public abstract function setUserByID($path, $userID);
 
     /**
      * @param string $path
      * @param string $userName
      * @return bool
      */
-    public function setUserByName($path, $userName);
+    public abstract function setUserByName($path, $userName);
 
     /**
      * @param string $path
      * @param int    $groupID
      * @return bool
      */
-    public function setGroupByID($path, $groupID);
+    public abstract function setGroupByID($path, $groupID);
 
     /**
      * @param string $path
      * @param string $groupName
      * @return bool
      */
-    public function setGroupByName($path, $groupName);
+    public abstract function setGroupByName($path, $groupName);
 
     /**
      * @param string   $path
      * @param FilePermissions $mode
      * @return bool
      */
-    public function setPermissions($path, FilePermissions $mode);
+    public abstract function setPermissions($path, FilePermissions $mode);
 
     /**
      * @param string $path
@@ -89,91 +89,91 @@ interface StreamWrapper2 {
      * @param bool $reportErrors
      * @return null|FileAttributes
      */
-    public function getAttributes($path, $followLinks, $reportErrors);
+    public abstract function getAttributes($path, $followLinks, $reportErrors);
 
     /**
      * @param string $path
      * @return bool
      */
-    public function delete($path);
+    public abstract function delete($path);
 }
 
-interface OpenFile {
+abstract class AbstractOpenFile {
     /**
      * @param int $count
      * @return string
      */
-    public function read($count);
+    public abstract function read($count);
 
     /**
      * @return resource|null
      */
-    public function toResource();
+    public abstract function toResource();
 
     /**
      * @return bool
      */
-    public function isEndOfFile();
+    public abstract function isEndOfFile();
 
     /**
      * @return bool
      */
-    public function flushWrites();
+    public abstract function flushWrites();
 
     /**
      * @param Lock $lock
      * @param bool $noBlock
      * @return bool
      */
-    public function setLock(Lock $lock, $noBlock);
+    public abstract function setLock(Lock $lock, $noBlock);
 
     /**
      * @param int      $position
      * @param SeekRelativeTo $mode
      * @return bool
      */
-    public function setPosition($position, SeekRelativeTo $mode);
+    public abstract function setPosition($position, SeekRelativeTo $mode);
 
     /**
      * @return int
      */
-    public function getPosition();
+    public abstract function getPosition();
 
     /**
      * @param int $size
      * @return bool
      */
-    public function setSize($size);
+    public abstract function setSize($size);
 
     /**
      * @param string $data
      * @return int
      */
-    public function write($data);
+    public abstract function write($data);
 
     /**
      * @return FileAttributes|null
      */
-    public function getAttributes();
+    public abstract function getAttributes();
 
     /**
      * @param bool $blocking
      * @return bool
      */
-    public function setBlocking($blocking);
+    public abstract function setBlocking($blocking);
 
     /**
      * @param int $seconds
      * @param int $microseconds
      * @return bool
      */
-    public function setReadTimeout($seconds, $microseconds);
+    public abstract function setReadTimeout($seconds, $microseconds);
 
     /**
      * @param int $size
      * @return bool
      */
-    public function setWriteBuffer($size);
+    public abstract function setWriteBuffer($size);
 }
 
 /**
@@ -582,7 +582,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
 
     /** @var \Iterator|null */
     private $dir;
-    /** @var OpenFile|null */
+    /** @var AbstractOpenFile|null */
     private $stream;
 
     public function __construct() {
@@ -758,7 +758,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     /**
-     * @return StreamWrapper2
+     * @return AbstractFileSystem
      */
     private function instance() {
         return stream_context_get_options($this->context)[self::SCHEME]['instance'];
