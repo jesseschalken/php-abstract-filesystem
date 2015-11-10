@@ -11,11 +11,11 @@ interface StreamWrapper2 {
 
     /**
      * @param string   $path
-     * @param FileMode $mode
+     * @param FilePermissions $mode
      * @param bool     $recursive
      * @return bool
      */
-    public function createDirectory($path, FileMode $mode, $recursive);
+    public function createDirectory($path, FilePermissions $mode, $recursive);
 
     /**
      * @param string $path1
@@ -33,11 +33,12 @@ interface StreamWrapper2 {
     /**
      * @param string       $path
      * @param FileOpenMode $mode
-     * @param bool         $read
-     * @param bool         $write
+     * @param bool         $usePath
+     * @param bool         $reportErrors
+     * @param string       $openedPath
      * @return null|OpenFile
      */
-    public function openFile($path, FileOpenMode $mode, $read, $write);
+    public function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath);
 
     /**
      * @param string $path
@@ -77,17 +78,18 @@ interface StreamWrapper2 {
 
     /**
      * @param string   $path
-     * @param FileMode $mode
+     * @param FilePermissions $mode
      * @return bool
      */
-    public function setPermissions($path, FileMode $mode);
+    public function setPermissions($path, FilePermissions $mode);
 
     /**
      * @param string $path
-     * @param bool   $followLinks
+     * @param bool $followLinks
+     * @param bool $reportErrors
      * @return null|FileAttributes
      */
-    public function getAttributes($path, $followLinks);
+    public function getAttributes($path, $followLinks, $reportErrors);
 
     /**
      * @param string $path
@@ -111,26 +113,26 @@ interface OpenFile {
     /**
      * @return bool
      */
-    public function isEOF();
+    public function isEndOfFile();
 
     /**
      * @return bool
      */
-    public function flush();
+    public function flushWrites();
 
     /**
      * @param Lock $lock
-     * @param bool $block
+     * @param bool $noBlock
      * @return bool
      */
-    public function setLock(Lock $lock, $block);
+    public function setLock(Lock $lock, $noBlock);
 
     /**
      * @param int      $position
-     * @param SeekType $mode
+     * @param SeekRelativeTo $mode
      * @return bool
      */
-    public function setPosition($position, SeekType $mode);
+    public function setPosition($position, SeekRelativeTo $mode);
 
     /**
      * @return int
@@ -161,10 +163,11 @@ interface OpenFile {
     public function setBlocking($blocking);
 
     /**
+     * @param int $seconds
      * @param int $microseconds
      * @return bool
      */
-    public function setReadTimeout($microseconds);
+    public function setReadTimeout($seconds, $microseconds);
 
     /**
      * @param int $size
@@ -224,7 +227,7 @@ function get_bit($int, $offset) {
     return (bool)((1 << $offset) & $int);
 }
 
-class FileMode {
+class FilePermissions {
     /** @var bool */
     public $setuid = false;
     /** @var bool */
@@ -252,7 +255,7 @@ class FileMode {
 
     /**
      * @param int $int
-     * @return self
+     * @return FilePermissions
      */
     public static function fromInt($int) {
         $self         = new self;
@@ -372,7 +375,7 @@ class FileType extends Enum {
 class FileAttributes {
     /** @var FileType */
     public $type;
-    /** @var FileMode */
+    /** @var FilePermissions */
     public $mode;
     /** @var int */
     public $size = 0;
@@ -390,7 +393,7 @@ class FileAttributes {
     public $lastChanged = 0;
 
     public function __construct() {
-        $this->mode = new FileMode;
+        $this->mode = new FilePermissions;
     }
 
     public function __clone() {
@@ -399,7 +402,7 @@ class FileAttributes {
     }
 }
 
-class SeekType extends Enum {
+class SeekRelativeTo extends Enum {
     /**
      * Set position relative to the current position.
      */
@@ -422,44 +425,134 @@ class SeekType extends Enum {
     static function values() { return self::$values; }
 }
 
-class FileOpenMode extends Enum {
+abstract class FileOpenMode {
     /**
-     * Read an existing file and error if it doesn't exist
+     * @param string $mode
+     * @return self
+     * @throws \Exception
      */
-    const NO_CREATE = 'r';
+    final static function fromString($mode) {
+        $rw   = strpos($mode, '+') !== false;
+        $text = strpos($mode, 'b') === false;
+
+        switch (str_replace($mode, ['+', 'b', 't'], '')) {
+            case 'r':
+                return new NoCreate($rw, $text);
+            case 'w':
+                return new CreateOrTruncate($rw, $text);
+            case 'a':
+                return new CreateOrAppend($rw, $text);
+            case 'c':
+                return new CreateOrKeep($rw, $text);
+            case 'x':
+                return new CreateOnly($rw, $text);
+            default:
+                throw new \Exception("Invalid fopen() mode: $mode");
+        }
+    }
+
+    private $rw   = false;
+    private $text = false;
 
     /**
-     * Create a new file and truncate one if it already exists
+     * @param bool $rw
+     * @param bool $text
      */
-    const CREATE_OR_TRUNCATE = 'w';
+    function __construct($rw, $text) {
+        $this->rw   = $rw;
+        $this->text = $text;
+    }
 
     /**
-     * Create a new file and append to one if it already exists.
-     *
-     * !! Important: Under this mode, all writes append to the file
-     * regardless of the position later set with fseek().
+     * Whether the stream should be readable
+     * @return bool
      */
-    const CREATE_OR_APPEND = 'a';
+    function isReadable() { return $this->rw; }
 
     /**
-     * Create a new file and start writing from position 0 if it already exists.
+     * Whether the stream should be writable
+     * @return bool
      */
-    const CREATE_OR_KEEP = 'c';
+    function isWritable() { return $this->rw; }
 
     /**
-     * Only create a new file. Error if it already exists.
+     * Whether to open the file in text mode (true) or binary mode (false).
+     * Generally only makes a difference on Windows.
+     * @return bool
      */
-    const CREATE_ONLY = 'x';
+    function isText() { return $this->text; }
 
-    private static $values = [
-        self::NO_CREATE,
-        self::CREATE_OR_TRUNCATE,
-        self::CREATE_OR_APPEND,
-        self::CREATE_OR_KEEP,
-        self::CREATE_ONLY,
-    ];
+    /**
+     * Whether to a new file should be created if it doesn't already exist (otherwise error).
+     * @return bool
+     */
+    function createNew() { return false; }
 
-    static function values() { return self::$values; }
+    /**
+     * Whether writes should always append, regardless of file position.
+     * @return bool
+     */
+    function appendWrites() { return false; }
+
+    /**
+     * Whether an existing file should be truncated to 0 bytes.
+     * @return bool
+     */
+    function truncateExisting() { return false; }
+
+    /**
+     * Whether an existing file should be used if it already exists (otherwise error).
+     * @return bool
+     */
+    function useExisting() { return true; }
+
+    function toString() {
+        return ($this->text ? '' : 'b') . ($this->rw ? '+' : '');
+    }
+}
+
+/**
+ * Read an existing file and error if it doesn't exist
+ */
+class NoCreate extends FileOpenMode {
+    function toString() { return 'r' . parent::toString(); }
+    function isReadable() { return true; }
+    function createNew() { return false; }
+}
+
+/**
+ * Create a new file and truncate one if it already exists
+ */
+class CreateOrTruncate extends FileOpenMode {
+    function toString() { return 'w' . parent::toString(); }
+    function isWritable() { return true; }
+    function truncateExisting() { return true; }
+}
+
+/**
+ * Create a new file and append to one if it already exists.
+ */
+class CreateOrAppend extends FileOpenMode {
+    function toString() { return 'a' . parent::toString(); }
+    function isWritable() { return true; }
+    function appendWrites() { return true; }
+}
+
+/**
+ * Create a new file and start writing from position 0 if it already exists.
+ */
+class CreateOrKeep extends FileOpenMode {
+    function toString() { return 'c' . parent::toString(); }
+    function isWritable() { return true; }
+}
+
+/**
+ * Only create a new file. Error if it already exists.
+ */
+class CreateOnly extends FileOpenMode {
+    function toString() { return 'x' . parent::toString(); }
+    function isWritable() { return true; }
+    function useExisting() { return false; }
 }
 
 final class StreamWrapper2Impl extends \streamWrapper {
@@ -528,7 +621,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function mkdir($path, $mode, $options) {
-        return $this->instance()->createDirectory($path, FileMode::fromInt($mode), (bool)($options & STREAM_MKDIR_RECURSIVE));
+        return $this->instance()->createDirectory($path, FilePermissions::fromInt($mode), (bool)($options & STREAM_MKDIR_RECURSIVE));
     }
 
     public function rename($path_from, $path_to) {
@@ -553,11 +646,11 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_eof() {
-        return $this->stream->isEOF();
+        return $this->stream->isEndOfFile();
     }
 
     public function stream_flush() {
-        return $this->stream->flush();
+        return $this->stream->flushWrites();
     }
 
     public function stream_lock($operation) {
@@ -568,7 +661,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
         ];
         return $this->stream->setLock(
             new Lock($map[$operation & !LOCK_UN]),
-            !($operation & LOCK_NB)
+            !!($operation & LOCK_NB)
         );
     }
 
@@ -586,24 +679,19 @@ final class StreamWrapper2Impl extends \streamWrapper {
             case STREAM_META_GROUP_NAME:
                 return $instance->setGroupByName($path, $value);
             case STREAM_META_ACCESS:
-                return $instance->setPermissions($path, FileMode::fromInt($value));
+                return $instance->setPermissions($path, FilePermissions::fromInt($value));
             default:
                 return false;
         }
     }
 
     public function stream_open($path, $mode, $options, &$opened_path) {
-        if ($options & STREAM_USE_PATH) {
-            throw new \Exception('STREAM_USE_PATH is not supported');
-        }
-
-        $mode_ = new FileOpenMode(str_replace(['+', 'b', 't'], '', $mode));
-
         $this->stream = $this->instance()->openFile(
             $path,
-            $mode_,
-            $mode_->toString() === 'r' || strpos($mode, '+') !== false,
-            $mode_->toString() !== 'r' || strpos($mode, '+') !== false
+            FileOpenMode::fromString($mode),
+            !!($options & STREAM_USE_PATH),
+            !!($options & STREAM_REPORT_ERRORS),
+            $opened_path
         );
         return !!$this->stream;
     }
@@ -614,11 +702,11 @@ final class StreamWrapper2Impl extends \streamWrapper {
 
     public function stream_seek($offset, $whence = SEEK_SET) {
         static $map = [
-            SEEK_SET => SeekType::START,
-            SEEK_CUR => SeekType::CURRENT,
-            SEEK_END => SeekType::END,
+            SEEK_SET => SeekRelativeTo::START,
+            SEEK_CUR => SeekRelativeTo::CURRENT,
+            SEEK_END => SeekRelativeTo::END,
         ];
-        return $this->stream->setPosition($offset, new SeekType($map[$whence]));
+        return $this->stream->setPosition($offset, new SeekRelativeTo($map[$whence]));
     }
 
     public function stream_set_option($option, $arg1, $arg2) {
@@ -626,7 +714,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
             case STREAM_OPTION_BLOCKING:
                 return $this->stream->setBlocking(!!$arg1);
             case STREAM_OPTION_READ_TIMEOUT:
-                return $this->stream->setReadTimeout($arg1 * 1000000 + $arg2);
+                return $this->stream->setReadTimeout($arg1, $arg2);
             case STREAM_OPTION_WRITE_BUFFER:
                 switch ($arg1) {
                     case STREAM_BUFFER_NONE:
@@ -662,7 +750,11 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function url_stat($path, $flags) {
-        return self::statResult($this->instance()->getAttributes($path, !($flags & STREAM_URL_STAT_LINK)));
+        return self::statResult($this->instance()->getAttributes(
+            $path,
+            !($flags & STREAM_URL_STAT_LINK),
+            !($flags & STREAM_URL_STAT_QUIET)
+        ));
     }
 
     /**
