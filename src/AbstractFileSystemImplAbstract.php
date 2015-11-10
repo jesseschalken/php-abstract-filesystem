@@ -10,9 +10,9 @@ abstract class AbstractFileSystem {
     public abstract function readDirectory($path);
 
     /**
-     * @param string   $path
+     * @param string          $path
      * @param FilePermissions $mode
-     * @param bool     $recursive
+     * @param bool            $recursive
      * @return bool
      */
     public abstract function createDirectory($path, FilePermissions $mode, $recursive);
@@ -77,7 +77,7 @@ abstract class AbstractFileSystem {
     public abstract function setGroupByName($path, $groupName);
 
     /**
-     * @param string   $path
+     * @param string          $path
      * @param FilePermissions $mode
      * @return bool
      */
@@ -85,8 +85,8 @@ abstract class AbstractFileSystem {
 
     /**
      * @param string $path
-     * @param bool $followLinks
-     * @param bool $reportErrors
+     * @param bool   $followLinks
+     * @param bool   $reportErrors
      * @return null|FileAttributes
      */
     public abstract function getAttributes($path, $followLinks, $reportErrors);
@@ -128,7 +128,7 @@ abstract class AbstractOpenFile {
     public abstract function setLock(Lock $lock, $noBlock);
 
     /**
-     * @param int      $position
+     * @param int            $position
      * @param SeekRelativeTo $mode
      * @return bool
      */
@@ -200,7 +200,7 @@ abstract class Enum implements EnumAbstract {
         $this->value = (string)$value;
     }
 
-    final function toString() { return $this->value; }
+    final function value() { return $this->value; }
     final function equals(self $that) { return $this->value === $that->value; }
 }
 
@@ -368,15 +368,16 @@ class FileType extends Enum {
     }
 
     static function values() { return self::$values; }
-    final function toChar() { return self::$chars[$this->toString()]; }
-    final function toInt() { return self::$ints[$this->toString()]; }
+    final function toChar() { return self::$chars[$this->value()]; }
+    final function toInt() { return self::$ints[$this->value()]; }
+    final function toString() { return $this->value(); }
 }
 
 class FileAttributes {
     /** @var FileType */
     public $type;
     /** @var FilePermissions */
-    public $mode;
+    public $permissions;
     /** @var int */
     public $size = 0;
 
@@ -393,12 +394,12 @@ class FileAttributes {
     public $lastChanged = 0;
 
     public function __construct() {
-        $this->mode = new FilePermissions;
+        $this->permissions = new FilePermissions;
     }
 
     public function __clone() {
-        $this->mode = clone $this->mode;
-        $this->type = clone $this->type;
+        $this->permissions = clone $this->permissions;
+        $this->type        = clone $this->type;
     }
 }
 
@@ -565,7 +566,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
             return [
                 'dev'     => 0,
                 'ino'     => 0,
-                'mode'    => $stat->mode->toInt() | ($stat->type->toInt() << 12),
+                'mode'    => $stat->permissions->toInt() | ($stat->type->toInt() << 12),
                 'nlink'   => 1,
                 'uid'     => $stat->userID,
                 'gid'     => $stat->groupID,
