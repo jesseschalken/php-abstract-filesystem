@@ -4,25 +4,26 @@ namespace StreamWrapper2;
 
 abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function readDirectory($path) {
-        return new StreamWrapperOpenDir($this->url($path), $this->ctx());
+        $handle = opendir($this->getURL($path), $this->getContext());
+        return $handle === false ? null : new StreamWrapperOpenDir($handle);
     }
 
     public final function createDirectory($path, FilePermissions $mode, $recursive) {
-        return mkdir($this->url($path), $mode->toInt(), $recursive, $this->ctx());
+        return mkdir($this->getURL($path), $mode->toInt(), $recursive, $this->getContext());
     }
 
     public final function rename($path1, $path2) {
-        return rename($this->url($path1), $this->url($path2), $this->ctx());
+        return rename($this->getURL($path1), $this->getURL($path2), $this->getContext());
     }
 
     public final function removeDirectory($path) {
-        return rmdir($this->url($path), $this->ctx());
+        return rmdir($this->getURL($path), $this->getContext());
     }
 
     public final function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath) {
-        $url  = $this->url($path);
+        $url  = $this->getURL($path);
         $mode = $mode->toString();
-        $ctx  = $this->ctx();
+        $ctx  = $this->getContext();
 
         if ($reportErrors) {
             $resource = fopen($url, $mode, $useIncludePath, $ctx);
@@ -36,31 +37,31 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     }
 
     public final function setLastModified($path, $lastModified, $lastAccessed) {
-        return touch($this->url($path), $lastModified, $lastAccessed);
+        return touch($this->getURL($path), $lastModified, $lastAccessed);
     }
 
     public final function setUserByID($path, $userID) {
-        return chown($this->url($path), (int)$userID);
+        return chown($this->getURL($path), (int)$userID);
     }
 
     public final function setUserByName($path, $userName) {
-        return chown($this->url($path), (string)$userName);
+        return chown($this->getURL($path), (string)$userName);
     }
 
     public final function setGroupByID($path, $groupID) {
-        return chgrp($this->url($path), (int)$groupID);
+        return chgrp($this->getURL($path), (int)$groupID);
     }
 
     public final function setGroupByName($path, $groupName) {
-        return chgrp($this->url($path), (string)$groupName);
+        return chgrp($this->getURL($path), (string)$groupName);
     }
 
     public final function setPermissions($path, FilePermissions $mode) {
-        return chmod($this->url($path), $mode->toInt());
+        return chmod($this->getURL($path), $mode->toInt());
     }
 
     public final function getAttributes($path, $followLinks, $reportErrors) {
-        $url = $this->url($path);
+        $url = $this->getURL($path);
 
         if ($reportErrors) {
             $stat = $followLinks ? stat($url) : lstat($url);
@@ -74,19 +75,19 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     }
 
     public final function delete($path) {
-        return unlink($this->url($path));
+        return unlink($this->getURL($path));
     }
 
     /**
      * @return resource|null
      */
-    protected function ctx() { return null; }
+    protected function getContext() { return null; }
 
     /**
      * @param string $path
      * @return string
      */
-    abstract protected function url($path);
+    abstract protected function getURL($path);
 }
 
 final class StreamWrapperOpenFile extends AbstractOpenFile {
@@ -177,8 +178,11 @@ final class StreamWrapperOpenDir implements \Iterator {
     private $handle;
     private $current;
 
-    public function __construct($path, $context) {
-        $this->handle = opendir($path, $context);
+    /**
+     * @param resource $handle
+     */
+    public function __construct($handle) {
+        $this->handle = $handle;
     }
 
     public function __destruct() {
