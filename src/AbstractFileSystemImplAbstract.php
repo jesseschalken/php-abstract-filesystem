@@ -87,7 +87,7 @@ abstract class AbstractFileSystem {
      * @param string $path
      * @param bool   $followLinks
      * @param bool   $reportErrors
-     * @return null|FileAttributes
+     * @return null|AbstractFileAttributes
      */
     public abstract function getAttributes($path, $followLinks, $reportErrors);
 
@@ -113,7 +113,7 @@ abstract class AbstractOpenFile {
     /**
      * @return bool
      */
-    public abstract function isEndOfFile();
+    public abstract function isEOF();
 
     /**
      * @return bool
@@ -169,7 +169,7 @@ abstract class AbstractOpenFile {
     public abstract function write($data);
 
     /**
-     * @return FileAttributes|null
+     * @return AbstractFileAttributes|null
      */
     public abstract function getAttributes();
 
@@ -193,6 +193,9 @@ abstract class AbstractOpenFile {
     public abstract function setWriteBuffer($size);
 }
 
+/**
+ * Mutable class representing a file's permissions
+ */
 final class FilePermissions {
     /**
      * @param int $int
@@ -205,7 +208,7 @@ final class FilePermissions {
     }
 
     /** * @var int */
-    public $perms = 0777;
+    private $perms = 0777;
 
     /** @return bool */
     public function getSetUID() { return $this->getBit(11); }
@@ -213,42 +216,49 @@ final class FilePermissions {
     public function getSetGID() { return $this->getBit(10); }
     /** @return bool */
     public function getSticky() { return $this->getBit(9); }
+
     /** @return bool */
     public function getUserRead() { return $this->getBit(8); }
     /** @return bool */
     public function getUserWrite() { return $this->getBit(7); }
     /** @return bool */
     public function getUserExecute() { return $this->getBit(6); }
+
     /** @return bool */
     public function getGroupRead() { return $this->getBit(5); }
     /** @return bool */
     public function getGroupWrite() { return $this->getBit(4); }
     /** @return bool */
     public function getGroupExecute() { return $this->getBit(3); }
+
     /** @return bool */
     public function getOtherRead() { return $this->getBit(2); }
     /** @return bool */
     public function getOtherWrite() { return $this->getBit(1); }
     /** @return bool */
     public function getOtherExecute() { return $this->getBit(0); }
+
     /** @param bool $bool */
     public function setSetUID($bool) { $this->setBit(11, $bool); }
     /** @param bool $bool */
     public function setSetGID($bool) { $this->setBit(10, $bool); }
     /** @param bool $bool */
     public function setSticky($bool) { $this->setBit(9, $bool); }
+
     /** @param bool $bool */
     public function setUserRead($bool) { $this->setBit(8, $bool); }
     /** @param bool $bool */
     public function setUserWrite($bool) { $this->setBit(7, $bool); }
     /** @param bool $bool */
     public function setUserExecute($bool) { $this->setBit(6, $bool); }
+
     /** @param bool $bool */
     public function setGroupRead($bool) { $this->setBit(5, $bool); }
     /** @param bool $bool */
     public function setGroupWrite($bool) { $this->setBit(4, $bool); }
     /** @param bool $bool */
     public function setGroupExecute($bool) { $this->setBit(3, $bool); }
+
     /** @param bool $bool */
     public function setOtherRead($bool) { $this->setBit(2, $bool); }
     /** @param bool $bool */
@@ -280,123 +290,95 @@ final class FilePermissions {
 }
 
 final class FileType {
-    const PIPE   = 'pipe';
-    const CHAR   = 'char';
-    const DIR    = 'dir';
-    const BLOCK  = 'block';
-    const FILE   = 'file';
-    const LINK   = 'link';
-    const SOCKET = 'socket';
-    const DOOR   = 'door';
+    const PIPE   = 001;
+    const CHAR   = 002;
+    const DIR    = 004;
+    const BLOCK  = 006;
+    const FILE   = 010;
+    const LINK   = 012;
+    const SOCKET = 014;
+    const DOOR   = 015;
 
-    private static $ints = [
-        self::PIPE   => 001,
-        self::CHAR   => 002,
-        self::DIR    => 004,
-        self::BLOCK  => 006,
-        self::FILE   => 010,
-        self::LINK   => 012,
-        self::SOCKET => 014,
-        self::DOOR   => 015,
+    private static $values = [
+        self::PIPE,
+        self::CHAR,
+        self::DIR,
+        self::BLOCK,
+        self::FILE,
+        self::LINK,
+        self::SOCKET,
+        self::DOOR,
     ];
 
-    /**
-     * @param int $int
-     * @return self
-     */
-    static function fromInt($int) {
-        $map = array_flip(self::$ints);
-        return new self($map[$int]);
-    }
-
-    /** @var string */
+    /** @var int */
     private $value;
 
+    /**
+     * @param int $value
+     * @throws \Exception
+     */
     function __construct($value) {
-        $value = (string)$value;
-        if (!array_key_exists($value, self::$ints)) {
-            throw new \Exception("'$value' must be one of: " . join(', ', array_keys(self::$ints)));
+        if (!in_array($value, self::$values, true)) {
+            throw new \Exception("'$value' must be one of: " . join(', ', self::$values));
         }
         $this->value = $value;
     }
 
-    final function toInt() { return self::$ints[$this->value]; }
-    final function toString() { return $this->value; }
+    final function value() { return $this->value; }
     final function equals(self $that) { return $that->value === $this->value; }
 }
 
-final class FileAttributes {
-    static function fromArray(array $array) {
-        $self               = new self;
-        $self->groupID      = $array['gid'];
-        $self->userID       = $array['uid'];
-        $self->type         = FileType::fromInt($array['mode'] >> 12);
-        $self->permissions  = FilePermissions::fromInt($array['mode']);
-        $self->size         = $array['size'];
-        $self->lastAccessed = $array['atime'];
-        $self->lastModified = $array['mtime'];
-        $self->lastChanged  = $array['ctime'];
-        return $self;
-    }
+abstract class AbstractFileAttributes {
+    /** @return int The ID of the file (multiple directory entries can point to the same file) */
+    public function getID() { return 0; }
+    /** @return int The number of directory entries which refer to this file */
+    public function getRefCount() { return 1; }
 
-    /** @var int The "inode number" */
-    public $id = 0;
-    /** @var int The ID of the device on which this file resides */
-    public $outerDeviceID = 0;
-    /** @var int If this is a device file, the ID of the device to which it refers */
-    public $innerDeviceID = 0;
-    /** @var int The number of directory entries which refer to this file */
-    public $links = 1;
+    /** @return int The ID of the device on which this file resides */
+    public function getOuterDeviceID() { return 0; }
+    /** @return int If this is a device file, the ID of the device to which it refers */
+    public function getInnerDeviceID() { return 0; }
 
-    /** @var FileType type of file */
-    public $type;
-    /** @var FilePermissions permissions of file */
-    public $permissions;
-    /** @var int file size in bytes, or number of bytes in the contents of a symlink */
-    public $size = 0;
+    /** @return FileType type of file */
+    public function getType() { return new FileType(FileType::FILE); }
+    /** @return FilePermissions permissions of file */
+    public function getPermissions() { return new FilePermissions(); }
 
-    /** @var int ID of owning user */
-    public $userID = 0;
-    /** @var int ID of owning group */
-    public $groupID = 0;
+    /** @return int file size in bytes, or number of bytes in the contents of a symlink */
+    public function getSize() { return 0; }
 
-    /** @var int Last time the file was read */
-    public $lastAccessed = 0;
-    /** @var int Last time the file contents was modified */
-    public $lastModified = 0;
-    /** @var int Last time the file metadata was modified */
-    public $lastChanged = 0;
+    /** @return int ID of owning user */
+    public function getUserID() { return 0; }
+    /** @return int ID of owning group */
+    public function getGroupID() { return 0; }
 
-    /** @var int The size of blocks on the file system */
-    public $blockSize = -1;
-    /** @var int The number of blocks this file occupies */
-    public $blocks = -1;
+    /** @return int Last time the file was read */
+    public function getLastAccessed() { return 0; }
+    /** @return int Last time the file contents was modified */
+    public function getLastModified() { return 0; }
+    /** @return int Last time the file metadata was modified */
+    public function getLastChanged() { return 0; }
 
-    public function __construct() {
-        $this->permissions = new FilePermissions;
-        $this->type        = new FileType(FileType::FILE);
-    }
+    /** @return int The size of blocks on the file system */
+    public function getBlockSize() { return -1; }
+    /** @return int The number of blocks this file occupies */
+    public function getBlocks() { return -1; }
 
-    public function __clone() {
-        $this->permissions = clone $this->permissions;
-        $this->type        = clone $this->type;
-    }
-
-    public function toArray() {
+    public final function toArray() {
         return [
-            'dev'     => $this->outerDeviceID,
-            'ino'     => $this->id,
-            'mode'    => $this->permissions->toInt() | ($this->type->toInt() << 12),
-            'nlink'   => $this->links,
-            'uid'     => $this->userID,
-            'gid'     => $this->groupID,
-            'rdev'    => $this->innerDeviceID,
-            'size'    => $this->size,
-            'atime'   => $this->lastAccessed,
-            'mtime'   => $this->lastModified,
-            'ctime'   => $this->lastChanged,
-            'blksize' => $this->blockSize,
-            'blocks'  => $this->blocks,
+            'dev'     => $this->getOuterDeviceID(),
+            'ino'     => $this->getID(),
+            'mode'    => $this->getPermissions()->toInt() | ($this->getType()->value() << 12),
+            'nlink'   => $this->getRefCount(),
+            'uid'     => $this->getUserID(),
+            'gid'     => $this->getGroupID(),
+            'rdev'    => $this->getInnerDeviceID(),
+            'size'    => $this->getSize(),
+            'atime'   => $this->getLastAccessed(),
+            'mtime'   => $this->getLastModified(),
+            'ctime'   => $this->getLastChanged(),
+            'blksize' => $this->getBlockSize(),
+            'blocks'  => $this->getBlocks(),
         ];
     }
 }
@@ -459,7 +441,7 @@ abstract class FileOpenMode {
     function isText() { return $this->text; }
 
     /**
-     * Whether to a new file should be created if it doesn't already exist (otherwise error).
+     * Whether a new file should be created if it doesn't already exist (otherwise error).
      * @return bool
      */
     function createNew() { return false; }
@@ -471,7 +453,7 @@ abstract class FileOpenMode {
     function appendWrites() { return false; }
 
     /**
-     * Whether an existing file should be truncated to 0 bytes.
+     * Whether an existing file should be truncated to 0 bytes. Only meaningful if useExisting() returns true.
      * @return bool
      */
     function truncateExisting() { return false; }
@@ -595,7 +577,7 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_eof() {
-        return $this->stream->isEndOfFile();
+        return $this->stream->isEOF();
     }
 
     public function stream_flush() {
