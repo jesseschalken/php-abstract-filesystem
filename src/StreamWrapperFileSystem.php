@@ -4,10 +4,7 @@ namespace StreamWrapper2;
 
 abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function readDirectory($path) {
-        $flags = 0;
-        if (defined('SCANDIR_SORT_NONE'))
-            $flags |= SCANDIR_SORT_NONE;
-        return new \ArrayIterator(scandir($this->url($path), $flags, $this->ctx()));
+        return new StreamWrapperOpenDir($this->url($path), $this->ctx());
     }
 
     public final function createDirectory($path, FilePermissions $mode, $recursive) {
@@ -123,14 +120,14 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
     public function lock($exclusive, $noBlock) {
         $op = $exclusive ? LOCK_EX : LOCK_SH;
         if ($noBlock)
-            $op |= LOCK_UN;
+            $op |= LOCK_NB;
         return flock($this->handle, $op);
     }
 
     public function unlock($noBlock) {
         $op = LOCK_UN;
         if ($noBlock)
-            $op |= LOCK_UN;
+            $op |= LOCK_NB;
         return flock($this->handle, $op);
     }
 
@@ -155,7 +152,8 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
     }
 
     public function getAttributes() {
-        return fstat($this->handle);
+        $stat = fstat($this->handle);
+        return $stat ? FileAttributes::fromArray($stat) : null;
     }
 
     public function setBlocking($blocking) {
@@ -168,5 +166,50 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
 
     public function setWriteBuffer($size) {
         return stream_set_write_buffer($this->handle, $size);
+    }
+}
+
+final class StreamWrapperOpenDir implements \Iterator {
+    private $key = 0;
+    private $handle;
+    private $current;
+
+    public function __construct($path, $context) {
+        $this->handle = opendir($path, $context);
+    }
+
+    public function __destruct() {
+        if ($this->handle) {
+            closedir($this->handle);
+        }
+    }
+
+    public function current() {
+        if ($this->current === null) {
+            $this->current = readdir($this->handle);
+        }
+        return $this->current;
+    }
+
+    public function next() {
+        if ($this->current === null) {
+            readdir($this->handle);
+        } else {
+            $this->current = null;
+        }
+        $this->key++;
+    }
+
+    public function valid() {
+        return $this->current() !== false;
+    }
+
+    public function key() {
+        return $this->key;
+    }
+
+    public function rewind() {
+        $this->key = 0;
+        rewinddir($this->handle);
     }
 }
