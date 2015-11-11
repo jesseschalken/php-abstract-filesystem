@@ -20,16 +20,19 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     }
 
     public final function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath) {
+        $url  = $this->url($path);
+        $mode = $mode->toString();
+        $ctx  = $this->ctx();
 
-        if (!$reportErrors)
+        if ($reportErrors) {
+            $resource = fopen($url, $mode, $useIncludePath, $ctx);
+        } else {
             set_error_handler(function () { });
-
-        $result = new StreamWrapperOpenFile(fopen($this->url($path), $mode->toString(), $useIncludePath, $this->ctx()));
-
-        if (!$reportErrors)
+            $resource = fopen($url, $mode, $useIncludePath, $ctx);
             restore_error_handler();
+        }
 
-        return $result;
+        return new StreamWrapperOpenFile($resource);
     }
 
     public final function setLastModified($path, $lastModified, $lastAccessed) {
@@ -59,13 +62,13 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function getAttributes($path, $followLinks, $reportErrors) {
         $url = $this->url($path);
 
-        if (!$reportErrors)
+        if ($reportErrors) {
+            $stat = $followLinks ? stat($url) : lstat($url);
+        } else {
             set_error_handler(function () { });
-
-        $stat = $followLinks ? stat($url) : lstat($url);
-
-        if (!$reportErrors)
+            $stat = $followLinks ? stat($url) : lstat($url);
             restore_error_handler();
+        }
 
         return $stat ? FileAttributes::fromArray($stat) : null;
     }
@@ -181,6 +184,7 @@ final class StreamWrapperOpenDir implements \Iterator {
     public function __destruct() {
         if ($this->handle) {
             closedir($this->handle);
+            $this->handle = null;
         }
     }
 
