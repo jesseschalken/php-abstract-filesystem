@@ -22,12 +22,12 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
         return rmdir($this->url($path), $this->ctx());
     }
 
-    public final function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath) {
+    public final function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath) {
 
         if (!$reportErrors)
             set_error_handler(function () { });
 
-        $result = new StreamWrapperOpenFile(fopen($this->url($path), $mode->toString(), $usePath, $this->ctx()));
+        $result = new StreamWrapperOpenFile(fopen($this->url($path), $mode->toString(), $useIncludePath, $this->ctx()));
 
         if (!$reportErrors)
             restore_error_handler();
@@ -70,21 +70,7 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
         if (!$reportErrors)
             restore_error_handler();
 
-        if (!$stat)
-            return null;
-
-        $attrs              = new FileAttributes;
-        $attrs->groupID     = $stat['gid'];
-        $attrs->userID      = $stat['uid'];
-        $attrs->type        = FileType::fromInt($stat['mode'] >> 12);
-        $attrs->permissions = FilePermissions::fromInt($stat['mode']);
-        $attrs->size        = $stat['size'];
-
-        $attrs->lastAccessed = $stat['atime'];
-        $attrs->lastModified = $stat['mtime'];
-        $attrs->lastChanged  = $stat['ctime'];
-
-        return $attrs;
+        return $stat ? FileAttributes::fromArray($stat) : null;
     }
 
     public final function delete($path) {
@@ -114,9 +100,8 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         $this->handle = $resource;
     }
 
-    public function __destruct() {
-        if ($this->handle)
-            fclose($this->handle);
+    public function close() {
+        return fclose($this->handle);
     }
 
     public function read($count) {
@@ -135,25 +120,26 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return fflush($this->handle);
     }
 
-    public function setLock(Lock $lock, $noBlock) {
-        static $map = [
-            Lock::EXCLUSIVE => LOCK_EX,
-            Lock::NONE      => LOCK_UN,
-            Lock::SHARED    => LOCK_SH,
-        ];
-        $op = $map[$lock->value()];
+    public function lock($exclusive, $noBlock) {
+        $op = $exclusive ? LOCK_EX : LOCK_SH;
         if ($noBlock)
-            $op |= LOCK_NB;
+            $op |= LOCK_UN;
         return flock($this->handle, $op);
     }
 
-    public function setPosition($position, SeekRelativeTo $mode) {
-        static $map = [
-            SeekRelativeTo::CURRENT => SEEK_CUR,
-            SeekRelativeTo::END     => SEEK_END,
-            SeekRelativeTo::START   => SEEK_SET,
-        ];
-        return fseek($this->handle, $position, $map[$mode->value()]);
+    public function unlock($noBlock) {
+        $op = LOCK_UN;
+        if ($noBlock)
+            $op |= LOCK_UN;
+        return flock($this->handle, $op);
+    }
+
+    public function setPosition($position, $fromEnd) {
+        return fseek($this->handle, $position, $fromEnd ? SEEK_END : SEEK_SET);
+    }
+
+    public function addPosition($position) {
+        return fseek($this->handle, $position, SEEK_CUR);
     }
 
     public function getPosition() {
