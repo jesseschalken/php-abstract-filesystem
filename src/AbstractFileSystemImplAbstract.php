@@ -194,91 +194,88 @@ abstract class AbstractOpenFile {
 }
 
 final class FilePermissions {
-    /** @var bool */
-    public $setuid = false;
-    /** @var bool */
-    public $setgid = false;
-    /** @var bool */
-    public $sticky = false;
-    /** @var ReadWriteExecute */
-    public $user;
-    /** @var ReadWriteExecute */
-    public $group;
-    /** @var ReadWriteExecute */
-    public $other;
-
-    public function __construct() {
-        $this->user  = new ReadWriteExecute;
-        $this->group = new ReadWriteExecute;
-        $this->other = new ReadWriteExecute;
-    }
-
-    public function __clone() {
-        $this->user  = clone $this->user;
-        $this->group = clone $this->group;
-        $this->other = clone $this->other;
-    }
-
     /**
      * @param int $int
-     * @return FilePermissions
+     * @return self
      */
     public static function fromInt($int) {
-        $self         = new self;
-        $self->setuid = !!($int & (1 << 11));
-        $self->setgid = !!($int & (1 << 10));
-        $self->sticky = !!($int & (1 << 9));
-        $self->user   = ReadWriteExecute::fromInt($int >> 6);
-        $self->group  = ReadWriteExecute::fromInt($int >> 3);
-        $self->other  = ReadWriteExecute::fromInt($int >> 0);
+        $self        = new self;
+        $self->perms = $int & 07777;
         return $self;
     }
 
-    /**
-     * @return int
-     */
-    public function toInt() {
-        $int =
-            ($this->setuid << 2) &
-            ($this->setgid << 1) &
-            ($this->sticky << 0);
+    /** * @var int */
+    public $perms = 0777;
 
-        return
-            ($int << 9) &
-            ($this->user->toInt() << 6) &
-            ($this->group->toInt() << 3) &
-            ($this->other->toInt() << 0);
+    /** @return bool */
+    public function getSetUID() { return $this->getBit(11); }
+    /** @return bool */
+    public function getSetGID() { return $this->getBit(10); }
+    /** @return bool */
+    public function getSticky() { return $this->getBit(9); }
+    /** @return bool */
+    public function getUserRead() { return $this->getBit(8); }
+    /** @return bool */
+    public function getUserWrite() { return $this->getBit(7); }
+    /** @return bool */
+    public function getUserExecute() { return $this->getBit(6); }
+    /** @return bool */
+    public function getGroupRead() { return $this->getBit(5); }
+    /** @return bool */
+    public function getGroupWrite() { return $this->getBit(4); }
+    /** @return bool */
+    public function getGroupExecute() { return $this->getBit(3); }
+    /** @return bool */
+    public function getOtherRead() { return $this->getBit(2); }
+    /** @return bool */
+    public function getOtherWrite() { return $this->getBit(1); }
+    /** @return bool */
+    public function getOtherExecute() { return $this->getBit(0); }
+    /** @param bool $bool */
+    public function setSetUID($bool) { $this->setBit(11, $bool); }
+    /** @param bool $bool */
+    public function setSetGID($bool) { $this->setBit(10, $bool); }
+    /** @param bool $bool */
+    public function setSticky($bool) { $this->setBit(9, $bool); }
+    /** @param bool $bool */
+    public function setUserRead($bool) { $this->setBit(8, $bool); }
+    /** @param bool $bool */
+    public function setUserWrite($bool) { $this->setBit(7, $bool); }
+    /** @param bool $bool */
+    public function setUserExecute($bool) { $this->setBit(6, $bool); }
+    /** @param bool $bool */
+    public function setGroupRead($bool) { $this->setBit(5, $bool); }
+    /** @param bool $bool */
+    public function setGroupWrite($bool) { $this->setBit(4, $bool); }
+    /** @param bool $bool */
+    public function setGroupExecute($bool) { $this->setBit(3, $bool); }
+    /** @param bool $bool */
+    public function setOtherRead($bool) { $this->setBit(2, $bool); }
+    /** @param bool $bool */
+    public function setOtherWrite($bool) { $this->setBit(1, $bool); }
+    /** @param bool $bool */
+    public function setOtherExecute($bool) { $this->setBit(0, $bool); }
+
+    /** * @return int */
+    public function toInt() { return $this->perms; }
+
+    /**
+     * @param int $bit
+     * @return bool
+     */
+    private function getBit($bit) {
+        return !!($this->perms & (1 << $bit));
     }
-}
-
-final class ReadWriteExecute {
-    /** @var bool */
-    public $read = false;
-    /** @var bool */
-    public $write = false;
-    /** @var bool */
-    public $execute = false;
 
     /**
-     * @param int $int
-     * @return ReadWriteExecute
+     * @param int  $bit
+     * @param bool $bool
      */
-    public static function fromInt($int) {
-        $self          = new self;
-        $self->read    = !!($int & (1 << 2));
-        $self->write   = !!($int & (1 << 1));
-        $self->execute = !!($int & (1 << 0));
-        return $self;
-    }
-
-    /**
-     * @return int
-     */
-    public function toInt() {
-        return
-            ($this->read << 2) &
-            ($this->write << 1) &
-            ($this->execute << 0);
+    private function setBit($bit, $bool) {
+        if ($bool)
+            $this->perms |= 1 << $bit;
+        else
+            $this->perms &= 1 << $bit;
     }
 }
 
@@ -372,7 +369,7 @@ final class FileAttributes {
 
     /** @var int ID of owning user */
     public $userID = 0;
-    /** @var int ID of owning group*/
+    /** @var int ID of owning group */
     public $groupID = 0;
 
     /** @var int Last time the file was read */
@@ -384,7 +381,7 @@ final class FileAttributes {
 
     /** @var int The size of blocks on the file system */
     public $blockSize = -1;
-    /** @var int The number of blocks this file occupies*/
+    /** @var int The number of blocks this file occupies */
     public $blocks = -1;
 
     public function __construct() {
