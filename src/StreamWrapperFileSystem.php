@@ -4,10 +4,7 @@ namespace StreamWrapper2;
 
 abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function readDirectory($path) {
-        $flags = 0;
-        if (defined('SCANDIR_SORT_NONE'))
-            $flags |= SCANDIR_SORT_NONE;
-        return new \ArrayIterator(scandir($this->url($path), $flags, $this->ctx()));
+        return new StreamWrapperOpenDir($this->url($path), $this->ctx());
     }
 
     public final function createDirectory($path, FilePermissions $mode, $recursive) {
@@ -22,17 +19,20 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
         return rmdir($this->url($path), $this->ctx());
     }
 
-    public final function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath) {
+    public final function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath) {
+        $url  = $this->url($path);
+        $mode = $mode->toString();
+        $ctx  = $this->ctx();
 
-        if (!$reportErrors)
+        if ($reportErrors) {
+            $resource = fopen($url, $mode, $useIncludePath, $ctx);
+        } else {
             set_error_handler(function () { });
-
-        $result = new StreamWrapperOpenFile(fopen($this->url($path), $mode->toString(), $usePath, $this->ctx()));
-
-        if (!$reportErrors)
+            $resource = fopen($url, $mode, $useIncludePath, $ctx);
             restore_error_handler();
+        }
 
-        return $result;
+        return new StreamWrapperOpenFile($resource);
     }
 
     public final function setLastModified($path, $lastModified, $lastAccessed) {
@@ -62,29 +62,15 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function getAttributes($path, $followLinks, $reportErrors) {
         $url = $this->url($path);
 
-        if (!$reportErrors)
+        if ($reportErrors) {
+            $stat = $followLinks ? stat($url) : lstat($url);
+        } else {
             set_error_handler(function () { });
-
-        $stat = $followLinks ? stat($url) : lstat($url);
-
-        if (!$reportErrors)
+            $stat = $followLinks ? stat($url) : lstat($url);
             restore_error_handler();
+        }
 
-        if (!$stat)
-            return null;
-
-        $attrs              = new FileAttributes;
-        $attrs->groupID     = $stat['gid'];
-        $attrs->userID      = $stat['uid'];
-        $attrs->type        = FileType::fromInt($stat['mode'] >> 12);
-        $attrs->permissions = FilePermissions::fromInt($stat['mode']);
-        $attrs->size        = $stat['size'];
-
-        $attrs->lastAccessed = $stat['atime'];
-        $attrs->lastModified = $stat['mtime'];
-        $attrs->lastChanged  = $stat['ctime'];
-
-        return $attrs;
+        return $stat ? new StreamWrapperFileAttributes($stat) : null;
     }
 
     public final function delete($path) {
@@ -114,9 +100,8 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         $this->handle = $resource;
     }
 
-    public function __destruct() {
-        if ($this->handle)
-            fclose($this->handle);
+    public function close() {
+        return fclose($this->handle);
     }
 
     public function read($count) {
@@ -127,7 +112,7 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return $this->handle;
     }
 
-    public function isEndOfFile() {
+    public function isEOF() {
         return feof($this->handle);
     }
 
@@ -135,25 +120,26 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return fflush($this->handle);
     }
 
-    public function setLock(Lock $lock, $noBlock) {
-        static $map = [
-            Lock::EXCLUSIVE => LOCK_EX,
-            Lock::NONE      => LOCK_UN,
-            Lock::SHARED    => LOCK_SH,
-        ];
-        $op = $map[$lock->value()];
+    public function lock($exclusive, $noBlock) {
+        $op = $exclusive ? LOCK_EX : LOCK_SH;
         if ($noBlock)
             $op |= LOCK_NB;
         return flock($this->handle, $op);
     }
 
-    public function setPosition($position, SeekRelativeTo $mode) {
-        static $map = [
-            SeekRelativeTo::CURRENT => SEEK_CUR,
-            SeekRelativeTo::END     => SEEK_END,
-            SeekRelativeTo::START   => SEEK_SET,
-        ];
-        return fseek($this->handle, $position, $map[$mode->value()]);
+    public function unlock($noBlock) {
+        $op = LOCK_UN;
+        if ($noBlock)
+            $op |= LOCK_NB;
+        return flock($this->handle, $op);
+    }
+
+    public function setPosition($position, $fromEnd) {
+        return fseek($this->handle, $position, $fromEnd ? SEEK_END : SEEK_SET);
+    }
+
+    public function addPosition($position) {
+        return fseek($this->handle, $position, SEEK_CUR);
     }
 
     public function getPosition() {
@@ -169,7 +155,8 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
     }
 
     public function getAttributes() {
-        return fstat($this->handle);
+        $stat = fstat($this->handle);
+        return $stat ? new StreamWrapperFileAttributes($stat) : null;
     }
 
     public function setBlocking($blocking) {
@@ -184,3 +171,70 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return stream_set_write_buffer($this->handle, $size);
     }
 }
+
+final class StreamWrapperOpenDir implements \Iterator {
+    private $key = 0;
+    private $handle;
+    private $current;
+
+    public function __construct($path, $context) {
+        $this->handle = opendir($path, $context);
+    }
+
+    public function __destruct() {
+        if ($this->handle) {
+            closedir($this->handle);
+            $this->handle = null;
+        }
+    }
+
+    public function current() {
+        if ($this->current === null) {
+            $this->current = readdir($this->handle);
+        }
+        return $this->current;
+    }
+
+    public function next() {
+        if ($this->current === null) {
+            readdir($this->handle);
+        } else {
+            $this->current = null;
+        }
+        $this->key++;
+    }
+
+    public function valid() {
+        return $this->current() !== false;
+    }
+
+    public function key() {
+        return $this->key;
+    }
+
+    public function rewind() {
+        $this->key = 0;
+        rewinddir($this->handle);
+    }
+}
+
+final class StreamWrapperFileAttributes extends AbstractFileAttributes {
+    private $array;
+    public function __construct(array $array) { $this->array = $array; }
+    public function getID() { return $this->array['ino']; }
+    public function getRefCount() { return $this->array['nlink']; }
+    public function getOuterDeviceID() { return $this->array['dev']; }
+    public function getInnerDeviceID() { return $this->array['rdev']; }
+    public function getType() { return new FileType(($this->array['mode'] >> 12) & 017); }
+    public function getPermissions() { return FilePermissions::fromInt($this->array['mode'] & 07777); }
+    public function getSize() { return $this->array['size']; }
+    public function getUserID() { return $this->array['uid']; }
+    public function getGroupID() { return $this->array['gid']; }
+    public function getLastAccessed() { return $this->array['atime']; }
+    public function getLastModified() { return $this->array['mtime']; }
+    public function getLastChanged() { return $this->array['ctime']; }
+    public function getBlockSize() { return $this->array['blksize']; }
+    public function getBlocks() { return $this->array['blocks']; }
+}
+
+

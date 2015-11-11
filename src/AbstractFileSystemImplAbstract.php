@@ -33,12 +33,12 @@ abstract class AbstractFileSystem {
     /**
      * @param string       $path
      * @param FileOpenMode $mode
-     * @param bool         $usePath
+     * @param bool         $useIncludePath
      * @param bool         $reportErrors
      * @param string       $openedPath
      * @return null|AbstractOpenFile
      */
-    public abstract function openFile($path, FileOpenMode $mode, $usePath, $reportErrors, &$openedPath);
+    public abstract function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath);
 
     /**
      * @param string $path
@@ -87,7 +87,7 @@ abstract class AbstractFileSystem {
      * @param string $path
      * @param bool   $followLinks
      * @param bool   $reportErrors
-     * @return null|FileAttributes
+     * @return null|AbstractFileAttributes
      */
     public abstract function getAttributes($path, $followLinks, $reportErrors);
 
@@ -113,7 +113,7 @@ abstract class AbstractOpenFile {
     /**
      * @return bool
      */
-    public abstract function isEndOfFile();
+    public abstract function isEOF();
 
     /**
      * @return bool
@@ -121,18 +121,35 @@ abstract class AbstractOpenFile {
     public abstract function flushWrites();
 
     /**
-     * @param Lock $lock
+     * @return bool
+     */
+    public abstract function close();
+
+    /**
+     * @param bool $exclusive
      * @param bool $noBlock
      * @return bool
      */
-    public abstract function setLock(Lock $lock, $noBlock);
+    public abstract function lock($exclusive, $noBlock);
 
     /**
-     * @param int            $position
-     * @param SeekRelativeTo $mode
+     * @param bool $noBlock
      * @return bool
      */
-    public abstract function setPosition($position, SeekRelativeTo $mode);
+    public abstract function unlock($noBlock);
+
+    /**
+     * @param int  $position
+     * @param bool $fromEnd
+     * @return bool
+     */
+    public abstract function setPosition($position, $fromEnd);
+
+    /**
+     * @param $position
+     * @return bool
+     */
+    public abstract function addPosition($position);
 
     /**
      * @return int
@@ -152,7 +169,7 @@ abstract class AbstractOpenFile {
     public abstract function write($data);
 
     /**
-     * @return FileAttributes|null
+     * @return AbstractFileAttributes|null
      */
     public abstract function getAttributes();
 
@@ -177,176 +194,110 @@ abstract class AbstractOpenFile {
 }
 
 /**
- * The only way to define an abstract static method
- * is to put it in an interface and implement it.
+ * Mutable class representing a file's permissions
  */
-interface EnumAbstract {
-    /** @return array */
-    static function values();
-}
-
-abstract class Enum implements EnumAbstract {
-    /** @var string */
-    private $value;
-
-    /**
-     * @param string $value
-     * @throws \Exception
-     */
-    function __construct($value) {
-        if (array_diff(array($value), static::values())) {
-            throw new \Exception("'$value' must be one of '" . join("', '", static::values()) . "'");
-        }
-        $this->value = (string)$value;
-    }
-
-    final function value() { return $this->value; }
-    final function equals(self $that) { return $this->value === $that->value; }
-}
-
-class Lock extends Enum {
-    const SHARED    = 'shared';
-    const EXCLUSIVE = 'exclusive';
-    const NONE      = 'none';
-
-    private static $values = [
-        self::EXCLUSIVE,
-        self::SHARED,
-        self::NONE,
-    ];
-
-    static function values() { return self::$values; }
-}
-
-/**
- * @param int $int
- * @param int $offset
- * @return bool
- */
-function get_bit($int, $offset) {
-    return (bool)((1 << $offset) & $int);
-}
-
-class FilePermissions {
-    /** @var bool */
-    public $setuid = false;
-    /** @var bool */
-    public $setgid = false;
-    /** @var bool */
-    public $sticky = false;
-    /** @var ReadWriteExecute */
-    public $user;
-    /** @var ReadWriteExecute */
-    public $group;
-    /** @var ReadWriteExecute */
-    public $other;
-
-    public function __construct() {
-        $this->user  = new ReadWriteExecute;
-        $this->group = new ReadWriteExecute;
-        $this->other = new ReadWriteExecute;
-    }
-
-    public function __clone() {
-        $this->user  = clone $this->user;
-        $this->group = clone $this->group;
-        $this->other = clone $this->other;
-    }
-
+final class FilePermissions {
     /**
      * @param int $int
-     * @return FilePermissions
+     * @return self
      */
     public static function fromInt($int) {
-        $self         = new self;
-        $self->setuid = get_bit($int, 11);
-        $self->setgid = get_bit($int, 10);
-        $self->sticky = get_bit($int, 9);
-        $self->user   = ReadWriteExecute::fromInt($int >> 6);
-        $self->group  = ReadWriteExecute::fromInt($int >> 3);
-        $self->other  = ReadWriteExecute::fromInt($int >> 0);
+        $self        = new self;
+        $self->perms = $int & 07777;
         return $self;
     }
 
-    /**
-     * @return int
-     */
-    public function toInt() {
-        $int =
-            ($this->setuid << 2) &
-            ($this->setgid << 1) &
-            ($this->sticky << 0);
+    /** * @var int */
+    private $perms = 0777;
 
-        return
-            ($int << 9) &
-            ($this->user->toInt() << 6) &
-            ($this->group->toInt() << 3) &
-            ($this->other->toInt() << 0);
+    /** @return bool */
+    public function getSetUID() { return $this->getBit(11); }
+    /** @return bool */
+    public function getSetGID() { return $this->getBit(10); }
+    /** @return bool */
+    public function getSticky() { return $this->getBit(9); }
+
+    /** @return bool */
+    public function getUserRead() { return $this->getBit(8); }
+    /** @return bool */
+    public function getUserWrite() { return $this->getBit(7); }
+    /** @return bool */
+    public function getUserExecute() { return $this->getBit(6); }
+
+    /** @return bool */
+    public function getGroupRead() { return $this->getBit(5); }
+    /** @return bool */
+    public function getGroupWrite() { return $this->getBit(4); }
+    /** @return bool */
+    public function getGroupExecute() { return $this->getBit(3); }
+
+    /** @return bool */
+    public function getOtherRead() { return $this->getBit(2); }
+    /** @return bool */
+    public function getOtherWrite() { return $this->getBit(1); }
+    /** @return bool */
+    public function getOtherExecute() { return $this->getBit(0); }
+
+    /** @param bool $bool */
+    public function setSetUID($bool) { $this->setBit(11, $bool); }
+    /** @param bool $bool */
+    public function setSetGID($bool) { $this->setBit(10, $bool); }
+    /** @param bool $bool */
+    public function setSticky($bool) { $this->setBit(9, $bool); }
+
+    /** @param bool $bool */
+    public function setUserRead($bool) { $this->setBit(8, $bool); }
+    /** @param bool $bool */
+    public function setUserWrite($bool) { $this->setBit(7, $bool); }
+    /** @param bool $bool */
+    public function setUserExecute($bool) { $this->setBit(6, $bool); }
+
+    /** @param bool $bool */
+    public function setGroupRead($bool) { $this->setBit(5, $bool); }
+    /** @param bool $bool */
+    public function setGroupWrite($bool) { $this->setBit(4, $bool); }
+    /** @param bool $bool */
+    public function setGroupExecute($bool) { $this->setBit(3, $bool); }
+
+    /** @param bool $bool */
+    public function setOtherRead($bool) { $this->setBit(2, $bool); }
+    /** @param bool $bool */
+    public function setOtherWrite($bool) { $this->setBit(1, $bool); }
+    /** @param bool $bool */
+    public function setOtherExecute($bool) { $this->setBit(0, $bool); }
+
+    /** * @return int */
+    public function toInt() { return $this->perms; }
+
+    /**
+     * @param int $bit
+     * @return bool
+     */
+    private function getBit($bit) {
+        return !!($this->perms & (1 << $bit));
+    }
+
+    /**
+     * @param int  $bit
+     * @param bool $bool
+     */
+    private function setBit($bit, $bool) {
+        if ($bool)
+            $this->perms |= 1 << $bit;
+        else
+            $this->perms &= ~(1 << $bit);
     }
 }
 
-class ReadWriteExecute {
-    /** @var bool */
-    public $read = false;
-    /** @var bool */
-    public $write = false;
-    /** @var bool */
-    public $execute = false;
-
-    /**
-     * @param int $int
-     * @return ReadWriteExecute
-     */
-    public static function fromInt($int) {
-        $self          = new self;
-        $self->read    = get_bit($int, 2);
-        $self->write   = get_bit($int, 1);
-        $self->execute = get_bit($int, 0);
-        return $self;
-    }
-
-    /**
-     * @return int
-     */
-    public function toInt() {
-        return
-            ($this->read << 2) &
-            ($this->write << 1) &
-            ($this->execute << 0);
-    }
-}
-
-class FileType extends Enum {
-    const PIPE   = 'pipe';
-    const CHAR   = 'char';
-    const DIR    = 'dir';
-    const BLOCK  = 'block';
-    const FILE   = 'file';
-    const LINK   = 'link';
-    const SOCKET = 'socket';
-    const DOOR   = 'door';
-
-    private static $chars = [
-        self::PIPE   => 'p',
-        self::CHAR   => 'c',
-        self::DIR    => 'd',
-        self::BLOCK  => 'b',
-        self::FILE   => '-',
-        self::LINK   => 'l',
-        self::SOCKET => 's',
-        self::DOOR   => 'D',
-    ];
-
-    private static $ints = [
-        self::PIPE   => 001,
-        self::CHAR   => 002,
-        self::DIR    => 004,
-        self::BLOCK  => 006,
-        self::FILE   => 010,
-        self::LINK   => 012,
-        self::SOCKET => 014,
-        self::DOOR   => 015,
-    ];
+final class FileType {
+    const PIPE   = 001;
+    const CHAR   = 002;
+    const DIR    = 004;
+    const BLOCK  = 006;
+    const FILE   = 010;
+    const LINK   = 012;
+    const SOCKET = 014;
+    const DOOR   = 015;
 
     private static $values = [
         self::PIPE,
@@ -359,71 +310,77 @@ class FileType extends Enum {
         self::DOOR,
     ];
 
+    /** @var int */
+    private $value;
+
     /**
-     * @param int $int
-     * @return FileType
+     * @param int $value
+     * @throws \Exception
      */
-    static function fromInt($int) {
-        return new self(array_flip(self::$ints)[$int]);
+    function __construct($value) {
+        if (!in_array($value, self::$values, true)) {
+            throw new \Exception("'$value' must be one of: " . join(', ', self::$values));
+        }
+        $this->value = $value;
     }
 
-    static function values() { return self::$values; }
-    final function toChar() { return self::$chars[$this->value()]; }
-    final function toInt() { return self::$ints[$this->value()]; }
-    final function toString() { return $this->value(); }
+    final function value() { return $this->value; }
+    final function equals(self $that) { return $that->value === $this->value; }
 }
 
-class FileAttributes {
-    /** @var FileType */
-    public $type;
-    /** @var FilePermissions */
-    public $permissions;
-    /** @var int */
-    public $size = 0;
+abstract class AbstractFileAttributes {
+    /** @return int The ID of the file (multiple directory entries can point to the same file) */
+    public function getID() { return 0; }
+    /** @return int The number of directory entries which refer to this file */
+    public function getRefCount() { return 1; }
 
-    /** @var int */
-    public $userID = 0;
-    /** @var int */
-    public $groupID = 0;
+    /** @return int The ID of the device on which this file resides */
+    public function getOuterDeviceID() { return 0; }
+    /** @return int If this is a device file, the ID of the device to which it refers */
+    public function getInnerDeviceID() { return 0; }
 
-    /** @var int Last time the file was read */
-    public $lastAccessed = 0;
-    /** @var int Last time the file contents was modified */
-    public $lastModified = 0;
-    /** @var int Last time the file contents or metadata were modified */
-    public $lastChanged = 0;
+    /** @return FileType type of file */
+    public function getType() { return new FileType(FileType::FILE); }
+    /** @return FilePermissions permissions of file */
+    public function getPermissions() { return new FilePermissions(); }
 
-    public function __construct() {
-        $this->permissions = new FilePermissions;
+    /** @return int file size in bytes, or number of bytes in the contents of a symlink */
+    public function getSize() { return 0; }
+
+    /** @return int ID of owning user */
+    public function getUserID() { return 0; }
+    /** @return int ID of owning group */
+    public function getGroupID() { return 0; }
+
+    /** @return int Last time the file was read */
+    public function getLastAccessed() { return 0; }
+    /** @return int Last time the file contents was modified */
+    public function getLastModified() { return 0; }
+    /** @return int Last time the file metadata was modified */
+    public function getLastChanged() { return 0; }
+
+    /** @return int The size of blocks on the file system */
+    public function getBlockSize() { return -1; }
+    /** @return int The number of blocks this file occupies */
+    public function getBlocks() { return -1; }
+
+    public final function toArray() {
+        return [
+            'dev'     => $this->getOuterDeviceID(),
+            'ino'     => $this->getID(),
+            'mode'    => $this->getPermissions()->toInt() | ($this->getType()->value() << 12),
+            'nlink'   => $this->getRefCount(),
+            'uid'     => $this->getUserID(),
+            'gid'     => $this->getGroupID(),
+            'rdev'    => $this->getInnerDeviceID(),
+            'size'    => $this->getSize(),
+            'atime'   => $this->getLastAccessed(),
+            'mtime'   => $this->getLastModified(),
+            'ctime'   => $this->getLastChanged(),
+            'blksize' => $this->getBlockSize(),
+            'blocks'  => $this->getBlocks(),
+        ];
     }
-
-    public function __clone() {
-        $this->permissions = clone $this->permissions;
-        $this->type        = clone $this->type;
-    }
-}
-
-class SeekRelativeTo extends Enum {
-    /**
-     * Set position relative to the current position.
-     */
-    const CURRENT = 'current';
-    /**
-     * Set position relative to the end of the file.
-     */
-    const END = 'end';
-    /**
-     * Set position relative to the start of the file.
-     */
-    const START = 'start';
-
-    private static $values = [
-        self::CURRENT,
-        self::END,
-        self::START,
-    ];
-
-    static function values() { return self::$values; }
 }
 
 abstract class FileOpenMode {
@@ -484,7 +441,7 @@ abstract class FileOpenMode {
     function isText() { return $this->text; }
 
     /**
-     * Whether to a new file should be created if it doesn't already exist (otherwise error).
+     * Whether a new file should be created if it doesn't already exist (otherwise error).
      * @return bool
      */
     function createNew() { return false; }
@@ -496,7 +453,7 @@ abstract class FileOpenMode {
     function appendWrites() { return false; }
 
     /**
-     * Whether an existing file should be truncated to 0 bytes.
+     * Whether an existing file should be truncated to 0 bytes. Only meaningful if useExisting() returns true.
      * @return bool
      */
     function truncateExisting() { return false; }
@@ -515,7 +472,7 @@ abstract class FileOpenMode {
 /**
  * Read an existing file and error if it doesn't exist
  */
-class NoCreate extends FileOpenMode {
+final class NoCreate extends FileOpenMode {
     function toString() { return 'r' . parent::toString(); }
     function isReadable() { return true; }
     function createNew() { return false; }
@@ -524,7 +481,7 @@ class NoCreate extends FileOpenMode {
 /**
  * Create a new file and truncate one if it already exists
  */
-class CreateOrTruncate extends FileOpenMode {
+final class CreateOrTruncate extends FileOpenMode {
     function toString() { return 'w' . parent::toString(); }
     function isWritable() { return true; }
     function truncateExisting() { return true; }
@@ -533,7 +490,7 @@ class CreateOrTruncate extends FileOpenMode {
 /**
  * Create a new file and append to one if it already exists.
  */
-class CreateOrAppend extends FileOpenMode {
+final class CreateOrAppend extends FileOpenMode {
     function toString() { return 'a' . parent::toString(); }
     function isWritable() { return true; }
     function appendWrites() { return true; }
@@ -542,7 +499,7 @@ class CreateOrAppend extends FileOpenMode {
 /**
  * Create a new file and start writing from position 0 if it already exists.
  */
-class CreateOrKeep extends FileOpenMode {
+final class CreateOrKeep extends FileOpenMode {
     function toString() { return 'c' . parent::toString(); }
     function isWritable() { return true; }
 }
@@ -550,7 +507,7 @@ class CreateOrKeep extends FileOpenMode {
 /**
  * Only create a new file. Error if it already exists.
  */
-class CreateOnly extends FileOpenMode {
+final class CreateOnly extends FileOpenMode {
     function toString() { return 'x' . parent::toString(); }
     function isWritable() { return true; }
     function useExisting() { return false; }
@@ -558,28 +515,6 @@ class CreateOnly extends FileOpenMode {
 
 final class StreamWrapper2Impl extends \streamWrapper {
     const SCHEME = 'sw2';
-
-    private static function statResult(FileAttributes $stat = null) {
-        if (!$stat) {
-            return false;
-        } else {
-            return [
-                'dev'     => 0,
-                'ino'     => 0,
-                'mode'    => $stat->permissions->toInt() | ($stat->type->toInt() << 12),
-                'nlink'   => 1,
-                'uid'     => $stat->userID,
-                'gid'     => $stat->groupID,
-                'rdev'    => 0,
-                'size'    => $stat->size,
-                'atime'   => $stat->lastAccessed,
-                'mtime'   => $stat->lastModified,
-                'ctime'   => $stat->lastChanged,
-                'blksize' => -1,
-                'blocks'  => -1,
-            ];
-        }
-    }
 
     /** @var \Iterator|null */
     private $dir;
@@ -638,16 +573,11 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_close() {
-        if ($this->stream) {
-            $this->stream = null;
-            return true;
-        } else {
-            return false;
-        }
+        return $this->stream->close();
     }
 
     public function stream_eof() {
-        return $this->stream->isEndOfFile();
+        return $this->stream->isEOF();
     }
 
     public function stream_flush() {
@@ -655,15 +585,17 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_lock($operation) {
-        static $map = [
-            LOCK_SH => Lock::SHARED,
-            LOCK_EX => Lock::EXCLUSIVE,
-            LOCK_UN => Lock::NONE,
-        ];
-        return $this->stream->setLock(
-            new Lock($map[$operation & !LOCK_UN]),
-            !!($operation & LOCK_NB)
-        );
+        $noBlock = !!($operation & LOCK_NB);
+        switch ($operation & ~LOCK_UN) {
+            case LOCK_SH:
+                return $this->stream->lock(false, $noBlock);
+            case LOCK_EX:
+                return $this->stream->lock(true, $noBlock);
+            case LOCK_UN:
+                return $this->stream->unlock($noBlock);
+            default:
+                return false;
+        }
     }
 
     public function stream_metadata($path, $option, $value) {
@@ -702,12 +634,16 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_seek($offset, $whence = SEEK_SET) {
-        static $map = [
-            SEEK_SET => SeekRelativeTo::START,
-            SEEK_CUR => SeekRelativeTo::CURRENT,
-            SEEK_END => SeekRelativeTo::END,
-        ];
-        return $this->stream->setPosition($offset, new SeekRelativeTo($map[$whence]));
+        switch ($whence) {
+            case SEEK_SET:
+                return $this->stream->setPosition($offset, false);
+            case SEEK_END:
+                return $this->stream->setPosition($offset, true);
+            case SEEK_CUR:
+                return $this->stream->addPosition($offset);
+            default:
+                return false;
+        }
     }
 
     public function stream_set_option($option, $arg1, $arg2) {
@@ -731,7 +667,8 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function stream_stat() {
-        return self::statResult($this->stream->getAttributes());
+        $stat = $this->stream->getAttributes();
+        return $stat ? $stat->toArray() : false;
     }
 
     public function stream_tell() {
@@ -751,11 +688,12 @@ final class StreamWrapper2Impl extends \streamWrapper {
     }
 
     public function url_stat($path, $flags) {
-        return self::statResult($this->instance()->getAttributes(
+        $stat = $this->instance()->getAttributes(
             $path,
             !($flags & STREAM_URL_STAT_LINK),
             !($flags & STREAM_URL_STAT_QUIET)
-        ));
+        );
+        return $stat ? $stat->toArray() : false;
     }
 
     /**
