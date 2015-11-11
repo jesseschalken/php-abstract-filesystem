@@ -289,17 +289,6 @@ final class FileType {
     const SOCKET = 'socket';
     const DOOR   = 'door';
 
-    private static $chars = [
-        self::PIPE   => 'p',
-        self::CHAR   => 'c',
-        self::DIR    => 'd',
-        self::BLOCK  => 'b',
-        self::FILE   => '-',
-        self::LINK   => 'l',
-        self::SOCKET => 's',
-        self::DOOR   => 'D',
-    ];
-
     private static $ints = [
         self::PIPE   => 001,
         self::CHAR   => 002,
@@ -331,7 +320,6 @@ final class FileType {
         $this->value = $value;
     }
 
-    final function toChar() { return self::$chars[$this->value]; }
     final function toInt() { return self::$ints[$this->value]; }
     final function toString() { return $this->value; }
     final function equals(self $that) { return $that->value === $this->value; }
