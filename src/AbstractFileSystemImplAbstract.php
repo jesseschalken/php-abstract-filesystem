@@ -275,7 +275,7 @@ final class FilePermissions {
         if ($bool)
             $this->perms |= 1 << $bit;
         else
-            $this->perms &= 1 << $bit;
+            $this->perms &= ~(1 << $bit);
     }
 }
 
