@@ -151,7 +151,7 @@ abstract class StreamWrapper {
      */
     public function stream_lock($operation) {
         $noBlock = !!($operation & LOCK_NB);
-        switch ($operation & ~LOCK_UN) {
+        switch ($operation & ~LOCK_NB) {
             case LOCK_SH:
                 return $this->stream->lock(false, $noBlock);
             case LOCK_EX:
