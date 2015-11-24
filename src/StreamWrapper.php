@@ -1,7 +1,5 @@
 <?php
 
-namespace StreamWrapper2;
-
 abstract class StreamWrapper {
     /**
      * @link http://php.net/manual/en/class.streamwrapper.php#streamwrapper.props.context
@@ -31,12 +29,7 @@ abstract class StreamWrapper {
      * @return bool
      */
     public function dir_closedir() {
-        if ($this->dir) {
-            $this->dir = null;
-            return true;
-        } else {
-            return false;
-        }
+        $this->dir = null;
     }
 
     /**
@@ -49,7 +42,6 @@ abstract class StreamWrapper {
         $path = $this->getPath($url);
 
         $this->dir = $fs->readDirectory($path);
-        return !!$this->dir;
     }
 
     /**
@@ -78,14 +70,15 @@ abstract class StreamWrapper {
     /**
      * @link http://php.net/manual/en/streamwrapper.mkdir.php
      * @param string $url
-     * @param int $mode
-     * @param int $options
+     * @param int    $mode
+     * @param int    $options
      * @return bool
      */
     public function mkdir($url, $mode, $options) {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
-        return $fs->createDirectory($path, FilePermissions::fromInt($mode), (bool)($options & STREAM_MKDIR_RECURSIVE));
+
+        $fs->createDirectory($path, new FilePermissions($mode), !!($options & STREAM_MKDIR_RECURSIVE));
     }
 
     /**
@@ -98,7 +91,8 @@ abstract class StreamWrapper {
         $fs    = $this->getFileSystem($url1);
         $path1 = $this->getPath($url1);
         $path2 = $this->getPath($url2);
-        return$fs->rename($path1, $path2);
+
+        $fs->rename($path1, $path2);
     }
 
     /**
@@ -109,7 +103,7 @@ abstract class StreamWrapper {
     public function rmdir($url) {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
-        return $fs->removeDirectory($path);
+        $fs->removeDirectory($path);
     }
 
     /**
@@ -117,7 +111,7 @@ abstract class StreamWrapper {
      * @return resource
      */
     public function stream_cast() {
-        return $this->stream->toResource();
+        return $this->stream->toResource() ?: false;
     }
 
     /**
@@ -125,7 +119,7 @@ abstract class StreamWrapper {
      * @return void
      */
     public function stream_close() {
-        $this->stream->close();
+        $this->stream = null;
     }
 
     /**
@@ -141,7 +135,8 @@ abstract class StreamWrapper {
      * @return bool
      */
     public function stream_flush() {
-        return $this->stream->flushWrites();
+        $this->stream->flush();
+        return true;
     }
 
     /**
@@ -150,24 +145,19 @@ abstract class StreamWrapper {
      * @return bool
      */
     public function stream_lock($operation) {
-        $noBlock = !!($operation & LOCK_NB);
-        switch ($operation & ~LOCK_NB) {
-            case LOCK_SH:
-                return $this->stream->lock(false, $noBlock);
-            case LOCK_EX:
-                return $this->stream->lock(true, $noBlock);
-            case LOCK_UN:
-                return $this->stream->unlock($noBlock);
-            default:
-                return false;
+        if ($operation & LOCK_NB) {
+            return $this->stream->setLockNoBlock(new Lock($operation & ~LOCK_NB));
+        } else {
+            $this->stream->setLock(new Lock($operation));
+            return true;
         }
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-metadata.php
      * @param string $url
-     * @param int $option
-     * @param mixed $value
+     * @param int    $option
+     * @param mixed  $value
      * @return bool
      */
     public function stream_metadata($url, $option, $value) {
@@ -175,42 +165,78 @@ abstract class StreamWrapper {
         $path = $this->getPath($url);
         switch ($option) {
             case STREAM_META_TOUCH:
-                return $fs->setLastModified($path, $value[0], $value[1]);
+                $fs->setLastModified($path, $value[0], $value[1]);
+                break;
             case STREAM_META_OWNER:
-                return $fs->setUserByID($path, $value);
+                $fs->setUserByID($path, $value);
+                break;
             case STREAM_META_OWNER_NAME:
-                return $fs->setUserByName($path, $value);
+                $fs->setUserByName($path, $value);
+                break;
             case STREAM_META_GROUP:
-                return $fs->setGroupByID($path, $value);
+                $fs->setGroupByID($path, $value);
+                break;
             case STREAM_META_GROUP_NAME:
-                return $fs->setGroupByName($path, $value);
+                $fs->setGroupByName($path, $value);
+                break;
             case STREAM_META_ACCESS:
-                return $fs->setPermissions($path, FilePermissions::fromInt($value));
+                $fs->setPermissions($path, new FilePermissions($value));
+                break;
             default:
                 return false;
         }
+        return true;
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-open.php
      * @param string $url
      * @param string $mode
-     * @param int $options
-     * @param string $opened_path
+     * @param int    $options
      * @return bool
+     * @throws Exception
      */
-    public function stream_open($url, $mode, $options, &$opened_path) {
+    public function stream_open($url, $mode, $options) {
+        if ($options & STREAM_USE_PATH) {
+            throw new Exception("STREAM_USE_PATH is not supported");
+        }
+
+        try {
+            $this->stream = $this->_stream_open($url, $mode);
+            return true;
+        } catch (FileSystemException $e) {
+            if ($options & STREAM_REPORT_ERRORS) {
+                throw $e;
+            } else {
+                return false;
+            }
+        }
+    }
+
+    /**
+     * @param string $url
+     * @param string $mode
+     * @return AbstractOpenFile
+     */
+    private function _stream_open($url, $mode) {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
+        $rw   = strpos(substr($mode, 1), '+') !== false;
 
-        $this->stream = $fs->openFile(
-            $path,
-            FileOpenMode::fromString($mode),
-            !!($options & STREAM_USE_PATH),
-            !!($options & STREAM_REPORT_ERRORS),
-            $opened_path
-        );
-        return !!$this->stream;
+        switch (substr($mode, 0, 1)) {
+            case 'r':
+                return $fs->openFile($path, $rw);
+            case 'w':
+                return $fs->createOrTruncateFile($path, $rw);
+            case 'a':
+                return $fs->createOrAppendFile($path, $rw);
+            case 'x':
+                return $fs->createFile($path, $rw);
+            case 'c':
+                return $fs->createOrOpenFile($path, $rw);
+            default:
+                throw new FileSystemException("Invalid fopen() mode: '$mode");
+        }
     }
 
     /**
@@ -317,16 +343,14 @@ abstract class StreamWrapper {
     /**
      * @link http://php.net/manual/en/streamwrapper.url-stat.php
      * @param string $url
-     * @param int $flags
+     * @param int    $flags
      * @return array
      */
     public function url_stat($url, $flags) {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
         $stat = $fs->getAttributes(
-            $path,
-            !($flags & STREAM_URL_STAT_LINK),
-            !($flags & STREAM_URL_STAT_QUIET)
+            $path, !($flags & STREAM_URL_STAT_LINK)
         );
         return $stat ? $stat->toArray() : false;
     }

@@ -1,7 +1,5 @@
 <?php
 
-namespace StreamWrapper2;
-
 abstract class StreamWrapperFileSystem extends AbstractFileSystem {
     public final function readDirectory($path) {
         $handle = opendir($this->getURL($path), $this->getContext());
@@ -20,9 +18,9 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
         return rmdir($this->getURL($path), $this->getContext());
     }
 
-    public final function openFile($path, FileOpenMode $mode, $useIncludePath, $reportErrors, &$openedPath) {
+    public final function openFile($path, FileOpenMode $mode, $readWrite, $binary, $useIncludePath, $reportErrors, &$openedPath) {
         $url  = $this->getURL($path);
-        $mode = $mode->toString();
+        $mode = $mode->value() . ($readWrite ? '+' : '') . ($binary ? 'b' : '');
         $ctx  = $this->getContext();
 
         if ($reportErrors) {
@@ -60,7 +58,7 @@ abstract class StreamWrapperFileSystem extends AbstractFileSystem {
         return chmod($this->getURL($path), $mode->toInt());
     }
 
-    public final function getAttributes($path, $followLinks, $reportErrors) {
+    public final function getAttributes($path, $followLinks) {
         $url = $this->getURL($path);
 
         if ($reportErrors) {
@@ -101,7 +99,7 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         $this->handle = $resource;
     }
 
-    public function close() {
+    public function __destruct() {
         return fclose($this->handle);
     }
 
@@ -117,22 +115,16 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return feof($this->handle);
     }
 
-    public function flushWrites() {
+    public function flush() {
         return fflush($this->handle);
     }
 
-    public function lock($exclusive, $noBlock) {
-        $op = $exclusive ? LOCK_EX : LOCK_SH;
-        if ($noBlock)
-            $op |= LOCK_NB;
-        return flock($this->handle, $op);
+    public function setLock(Lock $lock) {
+        return flock($this->handle, $lock->value());
     }
 
-    public function unlock($noBlock) {
-        $op = LOCK_UN;
-        if ($noBlock)
-            $op |= LOCK_NB;
-        return flock($this->handle, $op);
+    public function setLockNoBlock(Lock $lock) {
+        return flock($this->handle, $lock->value() & LOCK_NB);
     }
 
     public function setPosition($position, $fromEnd) {
@@ -230,7 +222,7 @@ final class StreamWrapperFileAttributes extends AbstractFileAttributes {
     public function getOuterDeviceID() { return $this->array['dev']; }
     public function getInnerDeviceID() { return $this->array['rdev']; }
     public function getType() { return new FileType(($this->array['mode'] >> 12) & 017); }
-    public function getPermissions() { return FilePermissions::fromInt($this->array['mode'] & 07777); }
+    public function getPermissions() { return new FilePermissions($this->array['mode'] & 07777); }
     public function getSize() { return $this->array['size']; }
     public function getUserID() { return $this->array['uid']; }
     public function getGroupID() { return $this->array['gid']; }
