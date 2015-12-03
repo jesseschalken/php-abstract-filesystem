@@ -25,7 +25,7 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
         return $this->handle;
     }
 
-    public function isEOF() {
+    public function isEof() {
         return feof($this->handle);
     }
 

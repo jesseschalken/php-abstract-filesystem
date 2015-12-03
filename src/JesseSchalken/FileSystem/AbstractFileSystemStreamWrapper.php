@@ -188,7 +188,7 @@ abstract class __streamWrapper {
      * @return bool
      */
     public function stream_eof() {
-        return $this->stream->isEOF();
+        return $this->stream->isEof();
     }
 
     /**

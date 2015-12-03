@@ -17,7 +17,7 @@ abstract class AbstractOpenFile {
     /**
      * @return bool
      */
-    public abstract function isEOF();
+    public abstract function isEof();
 
     /**
      * @return void
