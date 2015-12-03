@@ -1,6 +1,62 @@
 <?php
 
-abstract class StreamWrapper {
+namespace JesseSchalken\FileSystem;
+
+/**
+ * Stream wrapper for abstract file systems
+ */
+class AbstractFileSystemStreamWrapper extends AbstractStreamWrapper {
+    /**
+     * @var AbstractFileSystem[]
+     */
+    private static $ids = [];
+
+    /**
+     * @param int $id
+     * @return AbstractFileSystem
+     */
+    static function fromId($id) {
+        return self::$ids[$id];
+    }
+
+    /**
+     * @var int
+     */
+    private $id;
+
+    function __construct(AbstractFileSystem $fs) {
+        static $id = 1;
+        $this->id = $id++;
+
+        self::$ids[$this->id] = $fs;
+    }
+
+    function __destruct() {
+        unset(self::$ids[$this->id]);
+    }
+
+    /**
+     * @return int
+     */
+    function getId() {
+        return $this->id;
+    }
+
+    /**
+     * @return AbstractFileSystem
+     */
+    function getFileSystem() {
+        return self::fromId($this->id);
+    }
+
+    function getUrl($path) {
+        return __streamWrapper::PROTOCOL . '://' . $this->id . ':' . $path;
+    }
+}
+
+abstract class __streamWrapper {
+    const PROTOCOL = '__afs';
+
     /**
      * @link http://php.net/manual/en/class.streamwrapper.php#streamwrapper.props.context
      * @var resource|null
@@ -30,6 +86,7 @@ abstract class StreamWrapper {
      */
     public function dir_closedir() {
         $this->dir = null;
+        return true;
     }
 
     /**
@@ -42,6 +99,7 @@ abstract class StreamWrapper {
         $path = $this->getPath($url);
 
         $this->dir = $fs->readDirectory($path);
+        return true;
     }
 
     /**
@@ -79,6 +137,7 @@ abstract class StreamWrapper {
         $path = $this->getPath($url);
 
         $fs->createDirectory($path, new FilePermissions($mode), !!($options & STREAM_MKDIR_RECURSIVE));
+        return true;
     }
 
     /**
@@ -93,6 +152,7 @@ abstract class StreamWrapper {
         $path2 = $this->getPath($url2);
 
         $fs->rename($path1, $path2);
+        return true;
     }
 
     /**
@@ -104,6 +164,7 @@ abstract class StreamWrapper {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
         $fs->removeDirectory($path);
+        return true;
     }
 
     /**
@@ -146,9 +207,9 @@ abstract class StreamWrapper {
      */
     public function stream_lock($operation) {
         if ($operation & LOCK_NB) {
-            return $this->stream->setLockNoBlock(new Lock($operation & ~LOCK_NB));
+            return $this->stream->setLockNoBlock(new FileLock($operation & ~LOCK_NB));
         } else {
-            $this->stream->setLock(new Lock($operation));
+            $this->stream->setLock(new FileLock($operation));
             return true;
         }
     }
@@ -204,7 +265,7 @@ abstract class StreamWrapper {
         try {
             $this->stream = $this->_stream_open($url, $mode);
             return true;
-        } catch (FileSystemException $e) {
+        } catch (Exception $e) {
             if ($options & STREAM_REPORT_ERRORS) {
                 throw $e;
             } else {
@@ -235,7 +296,7 @@ abstract class StreamWrapper {
             case 'c':
                 return $fs->createOrOpenFile($path, $rw);
             default:
-                throw new FileSystemException("Invalid fopen() mode: '$mode");
+                throw new Exception("Invalid fopen() mode: '$mode");
         }
     }
 
@@ -257,11 +318,14 @@ abstract class StreamWrapper {
     public function stream_seek($offset, $whence = SEEK_SET) {
         switch ($whence) {
             case SEEK_SET:
-                return $this->stream->setPosition($offset, false);
+                $this->stream->setPosition($offset, false);
+                return true;
             case SEEK_END:
-                return $this->stream->setPosition($offset, true);
+                $this->stream->setPosition($offset, true);
+                return true;
             case SEEK_CUR:
-                return $this->stream->addPosition($offset);
+                $this->stream->addPosition($offset);
+                return true;
             default:
                 return false;
         }
@@ -277,15 +341,19 @@ abstract class StreamWrapper {
     public function stream_set_option($option, $arg1, $arg2) {
         switch ($option) {
             case STREAM_OPTION_BLOCKING:
-                return $this->stream->setBlocking(!!$arg1);
+                $this->stream->setBlocking(!!$arg1);
+                return true;
             case STREAM_OPTION_READ_TIMEOUT:
-                return $this->stream->setReadTimeout($arg1, $arg2);
+                $this->stream->setReadTimeout($arg1, $arg2);
+                return true;
             case STREAM_OPTION_WRITE_BUFFER:
                 switch ($arg1) {
                     case STREAM_BUFFER_NONE:
-                        return $this->stream->setWriteBuffer(0);
+                        $this->stream->setWriteBuffer(0);
+                        return true;
                     case STREAM_BUFFER_FULL:
-                        return $this->stream->setWriteBuffer($arg2);
+                        $this->stream->setWriteBuffer($arg2);
+                        return true;
                     default:
                         return false;
                 }
@@ -317,7 +385,8 @@ abstract class StreamWrapper {
      * @return bool
      */
     public function stream_truncate($new_size) {
-        return $this->stream->setSize($new_size);
+        $this->stream->setSize($new_size);
+        return true;
     }
 
     /**
@@ -338,6 +407,7 @@ abstract class StreamWrapper {
         $fs   = $this->getFileSystem($url);
         $path = $this->getPath($url);
         $fs->delete($path);
+        return true;
     }
 
     /**
@@ -359,12 +429,22 @@ abstract class StreamWrapper {
      * @param string $url
      * @return AbstractFileSystem
      */
-    protected abstract function getFileSystem($url);
+    private function getFileSystem($url) {
+        $url = explode('://', $url)[1];
+        $id  = explode(':', $url)[0];
+        return AbstractFileSystemStreamWrapper::fromId($id);
+    }
 
     /**
      * @param string $url
      * @return string
      */
-    protected abstract function getPath($url);
+    private function getPath($url) {
+        $url  = explode('://', $url)[1];
+        $path = explode(':', $url)[1];
+        return $path;
+    }
 }
+
+stream_wrapper_register(__streamWrapper::PROTOCOL, __streamWrapper::class, STREAM_IS_URL);
 
