@@ -50,7 +50,7 @@ final class StreamWrapperFileSystem extends AbstractFileSystem {
         $url = $this->sw->getUrl($path);
         $ctx = $this->sw->getContext($path);
 
-        return new StreamWrapperOpenFile(fopen($url, $mode, null, $ctx));
+        return new StreamWrapperOpenFile(fopen($url, $mode . 'b', null, $ctx));
     }
 
     public final function setLastModified($path, $lastModified, $lastAccessed) {
