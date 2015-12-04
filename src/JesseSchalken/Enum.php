@@ -6,6 +6,9 @@ abstract class Enum implements EnumAbstract {
     /** @var int */
     private $value;
 
+    /**
+     * @param int $value
+     */
     function __construct($value) {
         $this->value = (int)$value;
         if (!in_array($this->value, static::values())) {
