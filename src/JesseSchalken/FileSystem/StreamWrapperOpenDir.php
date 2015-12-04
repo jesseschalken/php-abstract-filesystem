@@ -3,6 +3,10 @@
 namespace JesseSchalken\FileSystem;
 
 final class StreamWrapperOpenDir implements \Iterator {
+    private static function check($function, \Closure $c) {
+        return StreamWrapperFileSystem::check($function, $c);
+    }
+
     private $key = 0;
     private $handle;
     private $current;
@@ -16,21 +20,27 @@ final class StreamWrapperOpenDir implements \Iterator {
 
     public function __destruct() {
         if ($this->handle) {
-            closedir($this->handle);
+            self::check('closedir', function () {
+                closedir($this->handle);
+            });
             $this->handle = null;
         }
     }
 
     public function current() {
         if ($this->current === null) {
-            $this->current = readdir($this->handle);
+            self::check('readdir', function () {
+                $this->current = readdir($this->handle);
+            });
         }
         return $this->current;
     }
 
     public function next() {
         if ($this->current === null) {
-            readdir($this->handle);
+            self::check('readdir', function () {
+                readdir($this->handle);
+            });
         } else {
             $this->current = null;
         }
@@ -47,6 +57,8 @@ final class StreamWrapperOpenDir implements \Iterator {
 
     public function rewind() {
         $this->key = 0;
-        rewinddir($this->handle);
+        self::check('rewinddir', function () {
+            rewinddir($this->handle);
+        });
     }
 }
