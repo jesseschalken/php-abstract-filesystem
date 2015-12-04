@@ -23,6 +23,12 @@ final class FilePermissions {
         $this->other = new FileUserPermissions($int >> 0);
     }
 
+    public function __clone() {
+        $this->user  = clone $this->user;
+        $this->group = clone $this->group;
+        $this->other = clone $this->other;
+    }
+
     /** @return FileUserPermissions */
     public function user() { return $this->user; }
     /** @return FileUserPermissions */
