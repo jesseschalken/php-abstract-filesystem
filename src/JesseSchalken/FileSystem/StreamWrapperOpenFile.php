@@ -63,7 +63,7 @@ final class StreamWrapperOpenFile extends AbstractOpenFile {
 
     public function getAttributes() {
         $stat = fstat($this->handle);
-        return $stat ? new \JesseSchalken\FileSystem\StreamWrapperFileAttributes($stat) : null;
+        return $stat ? new StreamWrapperFileAttributes($stat) : null;
     }
 
     public function setBlocking($blocking) {
