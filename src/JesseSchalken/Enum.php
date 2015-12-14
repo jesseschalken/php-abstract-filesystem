@@ -1,6 +1,11 @@
 <?php
 
-namespace JesseSchalken;
+namespace JesseSchalken\Enum;
+
+interface EnumAbstract {
+    /** @return int[] */
+    static function values();
+}
 
 abstract class Enum implements EnumAbstract {
     /** @var int */
@@ -8,6 +13,7 @@ abstract class Enum implements EnumAbstract {
 
     /**
      * @param int $value
+     * @throws EnumException
      */
     function __construct($value) {
         $this->value = (int)$value;
@@ -20,3 +26,5 @@ abstract class Enum implements EnumAbstract {
     final function equals(self $that) { return $this->value === $that->value; }
 }
 
+class EnumException extends \Exception {
+}
