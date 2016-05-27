@@ -1,19 +1,15 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace JesseSchalken\FileSystem;
 
-use JesseSchalken\Enum\Enum;
 use JesseSchalken\StreamWrapper\FileSystemStreamWrapper;
 use JesseSchalken\StreamWrapper\StreamWrapper;
 
 abstract class FileSystem {
     /**
      * Joins the given paths together like `"$path1/$path2"` but without adding a directory separator unnecessarily.
-     * @param string $path1
-     * @param string $path2
-     * @return string
      */
-    public final function joinPaths($path1, $path2) {
+    public final function joinPaths(string $path1, string $path2):string {
         foreach ($this->getValidDirectorySeparators() as $sep) {
             $len = strlen($sep);
             if (
@@ -28,297 +24,121 @@ abstract class FileSystem {
         return $path1 . $this->getDirectorySeparator() . $path2;
     }
 
-    /**
-     * @param string $path
-     * @return \Iterator
-     */
-    public abstract function readDirectory($path);
+    public abstract function readDirectory(string $path):\Iterator;
 
-    /**
-     * @param string          $path
-     * @param FilePermissions $mode
-     * @param bool            $recursive
-     * @return void
-     */
-    public abstract function createDirectory($path, FilePermissions $mode, $recursive);
+    public abstract function createDirectory(string $path, int $mode, bool $recursive = false):void;
 
-    /**
-     * @param string $path1
-     * @param string $path2
-     * @return void
-     */
-    public abstract function rename($path1, $path2);
+    public abstract function rename(string $path1, string $path2):void;
 
-    /**
-     * @param string $path
-     * @return void
-     */
-    public abstract function removeDirectory($path);
+    public abstract function removeDirectory(string $path):void;
 
-    /**
-     * r/r+ mode
-     * @param string $path
-     * @param bool   $writable
-     * @return OpenFile
-     */
-    public abstract function openFile($path, $writable);
+    public abstract function openFile(string $path, string $mode):OpenFile;
 
-    /**
-     * x/x+ mode
-     * @param string $path
-     * @param bool   $readable
-     * @return OpenFile
-     */
-    public abstract function createFile($path, $readable);
+    public abstract function setLastModified(string $path, int $lastModified, int $lastAccessed):void;
 
-    /**
-     * c/c+ mode
-     * @param string $path
-     * @param bool   $readable
-     * @return OpenFile
-     */
-    public abstract function createOrOpenFile($path, $readable);
+    public abstract function setUserById(string $path, int $userId):void;
 
-    /**
-     * a/a+ mode
-     * @param string $path
-     * @param bool   $readable
-     * @return OpenFile
-     */
-    public abstract function createOrAppendFile($path, $readable);
+    public abstract function setUserByName(string $path, string $userName):void;
 
-    /**
-     * w/w+ mode
-     * @param string $path
-     * @param bool   $readable
-     * @return OpenFile
-     */
-    public abstract function createOrTruncateFile($path, $readable);
+    public abstract function setGroupById(string $path, int $groupId):void;
 
-    /**
-     * @param string $path
-     * @param int    $lastModified
-     * @param int    $lastAccessed
-     * @return void
-     */
-    public abstract function setLastModified($path, $lastModified, $lastAccessed);
+    public abstract function setGroupByName(string $path, string $groupName):void;
 
-    /**
-     * @param string $path
-     * @param int    $userID
-     * @return void
-     */
-    public abstract function setUserByID($path, $userID);
+    public abstract function setPermissions(string $path, int $mode):void;
 
-    /**
-     * @param string $path
-     * @param string $userName
-     * @return void
-     */
-    public abstract function setUserByName($path, $userName);
+    public abstract function getAttributes(string $path, bool $followLinks):FileAttributes;
 
-    /**
-     * @param string $path
-     * @param int    $groupID
-     * @return void
-     */
-    public abstract function setGroupByID($path, $groupID);
-
-    /**
-     * @param string $path
-     * @param string $groupName
-     * @return void
-     */
-    public abstract function setGroupByName($path, $groupName);
-
-    /**
-     * @param string          $path
-     * @param FilePermissions $mode
-     * @return void
-     */
-    public abstract function setPermissions($path, FilePermissions $mode);
-
-    /**
-     * @param string $path
-     * @param bool   $followLinks
-     * @return FileAttributes
-     */
-    public abstract function getAttributes($path, $followLinks);
-
-    /**
-     * Remove the directory entry denoted by the given path.
-     * @param string $path
-     * @return void
-     */
-    public abstract function delete($path);
+    public abstract function delete(string $path):void;
 
     /**
      * Get the path used to resolve relative paths. The returned path will be in canonical form, as if passed through
      * realPath().
-     * @return string
      */
-    public abstract function getCurrentDirectory();
+    public abstract function getCurrentDirectory():string;
 
     /**
      * Set the path used to resolve relative paths. Error if the given path does not exist or is not a directory.
-     * @param string $path
-     * @return void
      */
-    public abstract function setCurrentDirectory($path);
+    public abstract function setCurrentDirectory(string $path):void;
 
     /**
      * Create a symbolic link.
-     * @param string $linkPath
-     * @param string $linkContents
-     * @return void
      */
-    public abstract function createLink($linkPath, $linkContents);
+    public abstract function createLink(string $linkPath, string $linkContents):void;
 
     /**
      * Read the given symbolic link.
-     * @param string $linkPath
-     * @return void
      */
-    public abstract function readLink($linkPath);
+    public abstract function readLink(string $linkPath):void;
 
     /**
      * Return the canonical path for the directory entry denoted by the given path. The canonical path should be
      * absolute and have all symbolic links, /./, /../ and // resolved.
-     * @param string $path
-     * @return string
      */
-    public abstract function realPath($path);
+    public abstract function realPath(string $path):string;
 
     /**
      * ['/'] on Mac/Linux, ['/', '\\'] on Windows
      * @return string[]
      */
-    public function getValidDirectorySeparators() { return [$this->getDirectorySeparator()]; }
+    public function getValidDirectorySeparators():array { return [$this->getDirectorySeparator()]; }
 
     /**
      * '/' on Mac/Linux, '\\' on Windows
-     * @return string
      */
-    public function getDirectorySeparator() { return '/'; }
+    public function getDirectorySeparator():string { return '/'; }
 
     /**
      * Get a stream wrapper for this filesystem. The caller must hold on to a reference to the returned object for
      * stream wrapper URLs generated by the stream wrapper to continue to work.
-     * @return StreamWrapper
      */
-    public function getStreamWrapper() {
+    public function getStreamWrapper():StreamWrapper {
         return new FileSystemStreamWrapper($this);
     }
 }
 
 abstract class OpenFile {
-    /**
-     * @param int $count
-     * @return string
-     */
-    public abstract function read($count);
+    public abstract function read(int $count):string;
 
-    /**
-     * @return resource|null
-     */
     public abstract function toResource();
 
-    /**
-     * @return bool
-     */
-    public abstract function isEof();
+    public abstract function isEof():bool;
 
-    /**
-     * @return void
-     * @throws Exception
-     */
-    public abstract function flush();
+    public abstract function flush():void;
 
-    /**
-     * Set the current type of lock (none, shared or exclusive).
-     * @param FileLock $lock
-     * @return void
-     */
-    public abstract function setLock(FileLock $lock);
+    public abstract function setLock(int $lock):void;
 
-    /**
-     * Same as setLock() but if the operation would block, return false instead.
-     * @param FileLock $lock
-     * @return bool
-     */
-    public abstract function setLockNoBlock(FileLock $lock);
+    public abstract function setLockNoBlock(int $lock):bool;
 
-    /**
-     * @param int $position
-     * @return void
-     * @throws Exception
-     */
-    public abstract function addPosition($position);
-    /**
-     * @param int  $position
-     * @param bool $fromEnd
-     * @return void
-     * @throws Exception
-     */
-    public abstract function setPosition($position, $fromEnd);
+    public abstract function addPosition(int $position):void;
 
-    /**
-     * @return int
-     */
-    public abstract function getPosition();
+    public abstract function setPosition(int $position, bool $fromEnd = false):void;
 
-    /**
-     * @param int $size
-     * @return void
-     * @throws Exception
-     */
-    public abstract function setSize($size);
+    public abstract function getPosition():int;
 
-    /**
-     * @param string $data
-     * @return int
-     */
-    public abstract function write($data);
+    public abstract function setSize(int $size):void;
 
-    /**
-     * @return FileAttributes
-     * @throws Exception
-     */
-    public function getAttributes() { return new FileAttributes; }
+    public abstract function write(string $data):int;
 
-    /**
-     * @param bool $blocking
-     * @return void
-     * @throws Exception
-     */
-    public function setBlocking($blocking) { }
+    public function getAttributes():FileAttributes { return new FileAttributes; }
 
-    /**
-     * @param int $seconds
-     * @param int $microseconds
-     * @return void
-     * @throws Exception
-     */
-    public function setReadTimeout($seconds, $microseconds) { }
+    public function setBlocking(bool $blocking):void { }
 
-    /**
-     * @param int $size
-     * @return void
-     * @throws Exception
-     */
-    public function setWriteBuffer($size) { }
+    public function setReadTimeout(int $seconds, int $microseconds):void { }
+
+    public function setWriteBuffer(int $size):void { }
 }
 
 class FileAttributes {
-    public final function toArray() {
+    public final function toArray():array {
         return [
-            'dev'     => $this->getOuterDeviceID(),
-            'ino'     => $this->getID(),
-            'mode'    => $this->getPermissions()->toInt() | ($this->getType()->value() << 12),
+            'dev'     => $this->getDevice(),
+            'ino'     => $this->getId(),
+            'mode'    => $this->getPermissions() | ($this->getType() << 12),
             'nlink'   => $this->getRefCount(),
-            'uid'     => $this->getUserID(),
-            'gid'     => $this->getGroupID(),
-            'rdev'    => $this->getInnerDeviceID(),
+            'uid'     => $this->getUserId(),
+            'gid'     => $this->getGroupId(),
+            'rdev'    => $this->getInnerDevice(),
             'size'    => $this->getSize(),
             'atime'   => $this->getLastAccessed(),
             'mtime'   => $this->getLastModified(),
@@ -327,72 +147,40 @@ class FileAttributes {
             'blocks'  => $this->getBlocks(),
         ];
     }
-    /** @return int The ID of the device on which this file resides */
-    public function getOuterDeviceID() { return 0; }
-    /** @return int The ID of the file (multiple directory entries can point to the same file) */
-    public function getID() { return 0; }
-    /** @return FilePermissions permissions of file */
-    public function getPermissions() { return new FilePermissions(); }
-    /** @return FileType type of file */
-    public function getType() { return new FileType(FileType::FILE); }
-    /** @return int The number of directory entries which refer to this file */
-    public function getRefCount() { return 1; }
-    /** @return int ID of owning user */
-    public function getUserID() { return 0; }
-    /** @return int ID of owning group */
-    public function getGroupID() { return 0; }
-    /** @return int If this is a device file, the ID of the device to which it refers */
-    public function getInnerDeviceID() { return 0; }
-    /** @return int file size in bytes, or number of bytes in the contents of a symlink */
-    public function getSize() { return 0; }
-    /** @return int Last time the file was read */
-    public function getLastAccessed() { return 0; }
-    /** @return int Last time the file contents was modified */
-    public function getLastModified() { return 0; }
-    /** @return int Last time the file metadata was modified */
-    public function getLastChanged() { return 0; }
-    /** @return int The size of blocks on the file system */
-    public function getBlockSize() { return -1; }
-    /** @return int The number of blocks this file occupies */
-    public function getBlocks() { return -1; }
+
+    public function getDevice():int { return 0; }
+
+    public function getId():int { return 0; }
+
+    public function getPermissions():int { return 0; }
+
+    public function getType():int { return FileType::FILE; }
+
+    public function getRefCount():int { return 1; }
+
+    public function getUserId():int { return 0; }
+
+    public function getGroupId():int { return 0; }
+
+    public function getInnerDevice():int { return 0; }
+
+    public function getSize():int { return 0; }
+
+    public function getLastAccessed():int { return 0; }
+
+    public function getLastModified():int { return 0; }
+
+    public function getLastChanged():int { return 0; }
+
+    public function getBlockSize():int { return -1; }
+
+    public function getBlocks():int { return -1; }
 }
 
-final class FileLock extends Enum {
+final class FileLock {
     const SHARED    = LOCK_SH;
     const EXCLUSIVE = LOCK_EX;
     const NONE      = LOCK_UN;
-
-    public static function values() {
-        static $values = [
-            self::NONE,
-            self::EXCLUSIVE,
-            self::SHARED,
-        ];
-        return $values;
-    }
-}
-
-final class Bit {
-    /**
-     * @param int $int
-     * @param int $bit
-     * @return bool
-     */
-    public static function get($int, $bit) {
-        return !!($int & (1 << $bit));
-    }
-
-    /**
-     * @param int  $int
-     * @param int  $bit
-     * @param bool $bool
-     */
-    public static function set(&$int, $bit, $bool) {
-        if ($bool)
-            $int |= 1 << $bit;
-        else
-            $int &= ~(1 << $bit);
-    }
 }
 
 /**
@@ -402,93 +190,35 @@ final class Bit {
 class Exception extends \RuntimeException {
 }
 
-/**
- * Mutable class representing a file's permissions
- */
+final class FileOpenMode {
+    const OPEN_READ_ONLY             = 'r';
+    const OPEN_READ_WRITE            = 'r+';
+    const OPEN_CREATE_WRITE_ONLY     = 'c';
+    const OPEN_CREATE_READ_WRITE     = 'c+';
+    const APPEND_WRITE_ONLY          = 'a';
+    const APPEND_READ_WRITE          = 'a+';
+    const CREATE_WRITE_ONLY          = 'x';
+    const CREATE_READ_WRITE          = 'x+';
+    const CREATE_TRUNCATE_WRITE_ONLY = 'w';
+    const CREATE_TRUNCATE_READ_WRITE = 'w+';
+}
+
 final class FilePermissions {
-    /** * @var int */
-    private $perms = 0;
-    /** @var FileUserPermissions */
-    private $user;
-    /** @var FileUserPermissions */
-    private $group;
-    /** @var FileUserPermissions */
-    private $other;
-
-    /** @param int $int */
-    public function __construct($int = 00777) {
-        $this->perms = ($int >> 9) & 07;
-        $this->user  = new FileUserPermissions($int >> 6);
-        $this->group = new FileUserPermissions($int >> 3);
-        $this->other = new FileUserPermissions($int >> 0);
-    }
-
-    public function __clone() {
-        $this->user  = clone $this->user;
-        $this->group = clone $this->group;
-        $this->other = clone $this->other;
-    }
-
-    /** @return FileUserPermissions */
-    public function user() { return $this->user; }
-    /** @return FileUserPermissions */
-    public function group() { return $this->group; }
-    /** @return FileUserPermissions */
-    public function other() { return $this->other; }
-
-    /** @return bool */
-    public function getSetUID() { return Bit::get($this->perms, 2); }
-    /** @return bool */
-    public function getSetGID() { return Bit::get($this->perms, 1); }
-    /** @return bool */
-    public function getSticky() { return Bit::get($this->perms, 0); }
-
-    /** @param bool $bool */
-    public function setSetUID($bool) { Bit::set($this->perms, 2, $bool); }
-    /** @param bool $bool */
-    public function setSetGID($bool) { Bit::set($this->perms, 1, $bool); }
-    /** @param bool $bool */
-    public function setSticky($bool) { Bit::set($this->perms, 0, $bool); }
-
-    /** * @return int */
-    public function toInt() {
-        $int = $this->perms << 9;
-        $int |= $this->user->toInt() << 6;
-        $int |= $this->group->toInt() << 3;
-        $int |= $this->other->toInt() << 0;
-        return $int;
-    }
+    const SET_UID     = 04000;
+    const SET_GID     = 02000;
+    const STICKY      = 01000;
+    const USER_READ   = 00400;
+    const USER_WRITE  = 00200;
+    const USER_EXEC   = 00100;
+    const GROUP_READ  = 00040;
+    const GROUP_WRITE = 00020;
+    const GROUP_EXEC  = 00010;
+    const OTHER_READ  = 00004;
+    const OTHER_WRITE = 00002;
+    const OTHER_EXEC  = 00001;
 }
 
-/**
- * Mutable class for the permissions of a particular class of user (owning user, owning group, other)
- */
-final class FileUserPermissions {
-    /** @var int */
-    private $perms = 07;
-
-    /** @param int $perms */
-    public function __construct($perms = 07) { $this->perms = $perms; }
-
-    /** @param bool $bool */
-    public function setRead($bool) { Bit::set($this->perms, 2, $bool); }
-    /** @param bool $bool */
-    public function setWrite($bool) { Bit::set($this->perms, 1, $bool); }
-    /** @param bool $bool */
-    public function setExecute($bool) { Bit::set($this->perms, 0, $bool); }
-
-    /** @return bool */
-    public function getRead() { Bit::get($this->perms, 2); }
-    /** @return bool */
-    public function getWrite() { Bit::get($this->perms, 1); }
-    /** @return bool */
-    public function getExecute() { Bit::get($this->perms, 0); }
-
-    /** @return int */
-    public function toInt() { return $this->perms; }
-}
-
-final class FileType extends Enum {
+final class FileType {
     const PIPE   = 001;
     const CHAR   = 002;
     const DIR    = 004;
@@ -497,19 +227,5 @@ final class FileType extends Enum {
     const LINK   = 012;
     const SOCKET = 014;
     const DOOR   = 015;
-
-    public static function values() {
-        static $values = [
-            self::PIPE,
-            self::CHAR,
-            self::DIR,
-            self::BLOCK,
-            self::FILE,
-            self::LINK,
-            self::SOCKET,
-            self::DOOR,
-        ];
-        return $values;
-    }
 }
 

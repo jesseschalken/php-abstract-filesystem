@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 1);
 
 namespace JesseSchalken\StreamWrapper;
 
@@ -12,15 +12,15 @@ abstract class StreamWrapper {
      * @param string $path
      * @return string
      */
-    abstract function getUrl($path);
+    public abstract function getUrl(string $path):string;
 
     /**
      * @param string $path
      * @return resource|null
      */
-    function getContext(
+    public function getContext(
         /** @noinspection PhpUnusedParameterInspection */
-        $path
+        string $path
     ) {
         return null;
     }
@@ -29,20 +29,20 @@ abstract class StreamWrapper {
 final class FileAttributes extends FileSystem\FileAttributes {
     private $array;
     public function __construct(array $array) { $this->array = $array; }
-    public function getID() { return $this->array['ino']; }
-    public function getRefCount() { return $this->array['nlink']; }
-    public function getOuterDeviceID() { return $this->array['dev']; }
-    public function getInnerDeviceID() { return $this->array['rdev']; }
-    public function getType() { return new FileSystem\FileType(($this->array['mode'] >> 12) & 017); }
-    public function getPermissions() { return new FileSystem\FilePermissions($this->array['mode'] & 07777); }
-    public function getSize() { return $this->array['size']; }
-    public function getUserID() { return $this->array['uid']; }
-    public function getGroupID() { return $this->array['gid']; }
-    public function getLastAccessed() { return $this->array['atime']; }
-    public function getLastModified() { return $this->array['mtime']; }
-    public function getLastChanged() { return $this->array['ctime']; }
-    public function getBlockSize() { return $this->array['blksize']; }
-    public function getBlocks() { return $this->array['blocks']; }
+    public function getId():int { return $this->array['ino']; }
+    public function getRefCount():int { return $this->array['nlink']; }
+    public function getDevice():int { return $this->array['dev']; }
+    public function getInnerDevice():int { return $this->array['rdev']; }
+    public function getType():int { return ($this->array['mode'] >> 12) & 017; }
+    public function getPermissions():int { return $this->array['mode'] & 07777; }
+    public function getSize():int { return $this->array['size']; }
+    public function getUserId():int { return $this->array['uid']; }
+    public function getGroupId():int { return $this->array['gid']; }
+    public function getLastAccessed():int { return $this->array['atime']; }
+    public function getLastModified():int { return $this->array['mtime']; }
+    public function getLastChanged():int { return $this->array['ctime']; }
+    public function getBlockSize():int { return $this->array['blksize']; }
+    public function getBlocks():int { return $this->array['blocks']; }
 }
 
 final class StreamWrapperOpenFile extends FileSystem\OpenFile {
@@ -62,7 +62,7 @@ final class StreamWrapperOpenFile extends FileSystem\OpenFile {
         });
     }
 
-    public function read($count) {
+    public function read(int $count):string {
         Errors::check('fread', function () use ($count) {
             return fread($this->handle, $count);
         });
@@ -72,82 +72,82 @@ final class StreamWrapperOpenFile extends FileSystem\OpenFile {
         return $this->handle;
     }
 
-    public function isEof() {
+    public function isEof():bool {
         Errors::check('feof', function () use (&$eof) {
             $eof = feof($this->handle);
         });
         return $eof;
     }
 
-    public function flush() {
+    public function flush():void {
         Errors::check('fflush', function () {
             fflush($this->handle);
         });
     }
 
-    public function setLock(FileSystem\FileLock $lock) {
+    public function setLock(int $lock):void {
         Errors::check('flock', function () use ($lock) {
-            return flock($this->handle, $lock->value());
+            return flock($this->handle, $lock);
         });
     }
 
-    public function setLockNoBlock(FileSystem\FileLock $lock) {
+    public function setLockNoBlock(int $lock):bool {
         Errors::check('flock', function () use ($lock, &$success) {
-            $success = flock($this->handle, $lock->value() & LOCK_NB);
+            $success = flock($this->handle, $lock & LOCK_NB);
         });
         return $success;
     }
 
-    public function setPosition($position, $fromEnd) {
+    public function setPosition(int $position, bool $fromEnd = false):void {
         Errors::check('fseek', function () use ($position, $fromEnd) {
             return fseek($this->handle, $position, $fromEnd ? SEEK_END : SEEK_SET);
         });
     }
 
-    public function addPosition($position) {
+    public function addPosition(int $position):void {
         Errors::check('fseek', function () use ($position) {
             return fseek($this->handle, $position, SEEK_CUR);
         });
     }
 
-    public function getPosition() {
+    public function getPosition():int {
         return Errors::check('ftell', function () {
             return ftell($this->handle);
         });
     }
 
-    public function setSize($size) {
+    public function setSize(int $size):void {
         Errors::check('ftruncate', function () use ($size) {
             return ftruncate($this->handle, $size);
         });
     }
 
-    public function write($data) {
-        Errors::check('fwrite', function () use ($data) {
+    public function write(string $data):int {
+        return Errors::check('fwrite', function () use ($data) {
             return fwrite($this->handle, $data);
         });
     }
 
-    public function getAttributes() {
+    public function getAttributes():FileSystem\FileAttributes {
         $stat = Errors::check('fstat', function () {
             return fstat($this->handle);
         });
         return $stat ? new FileAttributes($stat) : null;
     }
 
-    public function setBlocking($blocking) {
+    public function setBlocking(bool $blocking):void {
         Errors::check('stream_set_blocking', function () use ($blocking) {
             return stream_set_blocking($this->handle, $blocking ? 1 : 0);
         });
     }
 
-    public function setReadTimeout($seconds, $microseconds) {
+    public function setReadTimeout(int $seconds, int $microseconds):void {
         Errors::check('stream_set_timeout', function () use ($seconds, $microseconds) {
             return stream_set_timeout($this->handle, $seconds, $microseconds);
         });
     }
 
-    public function setWriteBuffer($size) {
+    public function setWriteBuffer(int $size):void {
         Errors::check('stream_set_write_buffer', function () use ($size) {
             return stream_set_write_buffer($this->handle, $size);
         });
@@ -161,7 +161,7 @@ class Errors {
      * @return mixed
      * @throws \Exception
      */
-    static function check($function, \Closure $c) {
+    public static function check(string $function, \Closure $c) {
         static $handler;
         if (!$handler) {
             $handler = function ($code, $message, $file, $line) {
@@ -190,52 +190,32 @@ abstract class StreamWrapperFileSystem extends FileSystem\FileSystem {
         $this->sw = $sw;
     }
 
-    public final function readDirectory($path) {
+    public final function readDirectory(string $path):\Iterator {
         $handle = Errors::check('opendir', function () use ($path) {
             return opendir($this->sw->getUrl($path), $this->sw->getContext($path));
         });
         return $handle === false ? null : new OpenDir($handle);
     }
 
-    public final function createDirectory($path, FileSystem\FilePermissions $mode, $recursive) {
+    public final function createDirectory(string $path, int $mode, bool $recursive = false):void {
         Errors::check('mkdir', function () use ($path, $mode, $recursive) {
-            return mkdir($this->sw->getUrl($path), $mode->toInt(), $recursive, $this->sw->getContext($path));
+            return mkdir($this->sw->getUrl($path), $mode, $recursive, $this->sw->getContext($path));
         });
     }
 
-    public final function rename($path1, $path2) {
+    public final function rename(string $path1, string $path2):void {
         Errors::check('rename', function () use ($path1, $path2) {
             return rename($this->sw->getUrl($path1), $this->sw->getUrl($path2), $this->sw->getContext($path1));
         });
     }
 
-    public final function removeDirectory($path) {
+    public final function removeDirectory(string $path):void {
         Errors::check('rmdir', function () use ($path) {
             return rmdir($this->sw->getUrl($path), $this->sw->getContext($path));
         });
     }
 
-    public function createFile($path, $readable) {
-        return $this->_openFile($path, $readable ? 'x+' : 'x');
-    }
-
-    public function createOrOpenFile($path, $readable) {
-        return $this->_openFile($path, $readable ? 'c+' : 'c');
-    }
-
-    public function createOrAppendFile($path, $readable) {
-        return $this->_openFile($path, $readable ? 'a+' : 'a');
-    }
-
-    public function createOrTruncateFile($path, $readable) {
-        return $this->_openFile($path, $readable ? 'w+' : 'w');
-    }
-
-    public function openFile($path, $writable) {
-        return $this->_openFile($path, $writable ? 'r+' : 'r');
-    }
-
-    private function _openFile($path, $mode) {
+    public final function openFile(string $path, string $mode):FileSystem\OpenFile {
         $handle = Errors::check('fopen', function () use ($path, $mode) {
             $url = $this->sw->getUrl($path);
             $ctx = $this->sw->getContext($path);
@@ -244,43 +224,43 @@ abstract class StreamWrapperFileSystem extends FileSystem\FileSystem {
         return new StreamWrapperOpenFile($handle);
     }
 
-    public final function setLastModified($path, $lastModified, $lastAccessed) {
+    public final function setLastModified(string $path, int $lastModified, int $lastAccessed):void {
         Errors::check('touch', function () use ($path, $lastAccessed, $lastModified) {
             return touch($this->sw->getUrl($path), $lastModified, $lastAccessed);
         });
     }
 
-    public final function setUserByID($path, $userID) {
-        Errors::check('chown', function () use ($path, $userID) {
-            return chown($this->sw->getUrl($path), (int)$userID);
+    public final function setUserByIs(string $path, int $userId):void {
+        Errors::check('chown', function () use ($path, $userId) {
+            return chown($this->sw->getUrl($path), (int)$userId);
         });
     }
 
-    public final function setUserByName($path, $userName) {
+    public final function setUserByName(string $path, string $userName):void {
         Errors::check('chown', function () use ($path, $userName) {
             return chown($this->sw->getUrl($path), (string)$userName);
         });
     }
 
-    public final function setGroupByID($path, $groupID) {
-        Errors::check('chgrp', function () use ($path, $groupID) {
-            return chgrp($this->sw->getUrl($path), (int)$groupID);
+    public final function setGroupById(string $path, int $groupId):void {
+        Errors::check('chgrp', function () use ($path, $groupId) {
+            return chgrp($this->sw->getUrl($path), (int)$groupId);
         });
     }
 
-    public final function setGroupByName($path, $groupName) {
+    public final function setGroupByName(string $path, string $groupName):void {
         Errors::check('chgrp', function () use ($path, $groupName) {
             return chgrp($this->sw->getUrl($path), (string)$groupName);
         });
     }
 
-    public final function setPermissions($path, FileSystem\FilePermissions $mode) {
+    public final function setPermissions(string $path, int $mode):void {
         Errors::check('chmod', function () use ($path, $mode) {
-            return chmod($this->sw->getUrl($path), $mode->toInt());
+            return chmod($this->sw->getUrl($path), $mode);
         });
     }
 
-    public final function getAttributes($path, $followLinks) {
+    public final function getAttributes(string $path, bool $followLinks):void {
         $stat = Errors::check($followLinks ? 'stat' : 'lstat', function () use ($path, $followLinks) {
             $url = $this->sw->getUrl($path);
             return $followLinks ? stat($url) : lstat($url);
@@ -289,13 +269,13 @@ abstract class StreamWrapperFileSystem extends FileSystem\FileSystem {
         return $stat ? new FileAttributes($stat) : null;
     }
 
-    public final function delete($path) {
+    public final function delete(string $path):void {
         Errors::check('unlink', function () use ($path) {
             return unlink($this->sw->getUrl($path));
         });
     }
 
-    public function getStreamWrapper() {
+    public function getStreamWrapper():StreamWrapper {
         return $this->sw;
     }
 }
@@ -374,11 +354,7 @@ class FileSystemStreamWrapper extends StreamWrapper {
      */
     private static $ids = [];
 
-    /**
-     * @param int $id
-     * @return FileSystem\FileSystem
-     */
-    static function getFileSystem($id) {
+    public static function getFileSystem(int $id):FileSystem\FileSystem {
         if (isset(self::$ids[$id])) {
             return self::$ids[$id];
         } else {
@@ -394,18 +370,18 @@ s
      */
     private $id;
 
-    function __construct(FileSystem\FileSystem $fs) {
+    public function __construct(FileSystem\FileSystem $fs) {
         static $id = 1;
         $this->id = $id++;
 
         self::$ids[$this->id] = $fs;
     }
 
-    function __destruct() {
+    public function __destruct() {
         unset(self::$ids[$this->id]);
     }
 
-    function getUrl($path) {
+    public function getUrl(string $path):string {
         $path = new FileSystemStreamWrapperPath($this->id, $path);
         return $path->getUrl();
     }
@@ -415,11 +391,7 @@ class FileSystemStreamWrapperPath {
     /** @var string|null */
     private static $protocol;
 
-    /**
-     * @param string $url
-     * @return self
-     */
-    public static function parse($url) {
+    public static function parse(string $url):self {
         $parts = explode('://', $url, 2);
         if (count($parts) < 2 || $parts[0] !== self::$protocol) {
             throw new FileSystem\Exception("Invalid URL: $url");
@@ -445,7 +417,7 @@ class FileSystemStreamWrapperPath {
         $this->path = $path;
     }
 
-    public function getUrl() {
+    public function getUrl():string {
         if (self::$protocol === null) {
             self::$protocol = '__afs' . mt_rand();
             stream_wrapper_register(self::$protocol, __streamWrapper::class, STREAM_IS_URL);
@@ -453,11 +425,11 @@ class FileSystemStreamWrapperPath {
         return self::$protocol . "://$this->id:$this->path";
     }
 
-    public function getPath() {
+    public function getPath():string {
         return $this->path;
     }
 
-    public function getFileSystem() {
+    public function getFileSystem():FileSystem\FileSystem {
         return FileSystemStreamWrapper::getFileSystem($this->id);
     }
 }
@@ -545,7 +517,7 @@ abstract class __streamWrapper {
         $url = self::parse($url);
         $url->getFileSystem()->createDirectory(
             $url->getPath(),
-            new FileSystem\FilePermissions($mode),
+            $mode,
             !!($options & STREAM_MKDIR_RECURSIVE)
         );
         return true;
@@ -588,51 +560,42 @@ abstract class __streamWrapper {
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-close.php
-     * @return void
      */
-    public function stream_close() {
+    public function stream_close():void {
         $this->stream = null;
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-eof.php
-     * @return bool
      */
-    public function stream_eof() {
+    public function stream_eof():bool {
         return $this->stream->isEof();
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-flush.php
-     * @return bool
      */
-    public function stream_flush() {
+    public function stream_flush():bool {
         $this->stream->flush();
         return true;
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-lock.php
-     * @param int $operation
-     * @return bool
      */
-    public function stream_lock($operation) {
+    public function stream_lock(int $operation):bool {
         if ($operation & LOCK_NB) {
-            return $this->stream->setLockNoBlock(new FileSystem\FileLock($operation & ~LOCK_NB));
+            return $this->stream->setLockNoBlock($operation & ~LOCK_NB);
         } else {
-            $this->stream->setLock(new FileSystem\FileLock($operation));
+            $this->stream->setLock($operation);
             return true;
         }
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-metadata.php
-     * @param string $url
-     * @param int    $option
-     * @param mixed  $value
-     * @return bool
      */
-    public function stream_metadata($url, $option, $value) {
+    public function stream_metadata(string $url, int $option, $value):bool {
         $url  = self::parse($url);
         $fs   = $url->getFileSystem();
         $path = $url->getPath();
@@ -641,19 +604,19 @@ abstract class __streamWrapper {
                 $fs->setLastModified($path, $value[0], $value[1]);
                 break;
             case STREAM_META_OWNER:
-                $fs->setUserByID($path, $value);
+                $fs->setUserById($path, $value);
                 break;
             case STREAM_META_OWNER_NAME:
                 $fs->setUserByName($path, $value);
                 break;
             case STREAM_META_GROUP:
-                $fs->setGroupByID($path, $value);
+                $fs->setGroupById($path, $value);
                 break;
             case STREAM_META_GROUP_NAME:
                 $fs->setGroupByName($path, $value);
                 break;
             case STREAM_META_ACCESS:
-                $fs->setPermissions($path, new FileSystem\FilePermissions($value));
+                $fs->setPermissions($path, $value);
                 break;
             default:
                 return false;
@@ -663,19 +626,20 @@ abstract class __streamWrapper {
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-open.php
-     * @param string $url
-     * @param string $mode
-     * @param int    $options
-     * @return bool
-     * @throws FileSystem\Exception
      */
-    public function stream_open($url, $mode, $options) {
+    public function stream_open(string $url, string $mode, int $options):bool {
         if ($options & STREAM_USE_PATH) {
             throw new FileSystem\Exception("STREAM_USE_PATH is not supported");
         }
 
         try {
-            $this->stream = $this->_stream_open($url, $mode);
+            $url  = self::parse($url);
+            $fs   = $url->getFileSystem();
+            $path = $url->getPath();
+            $mode = str_replace('t', '', $mode);
+            $mode = str_replace('b', '', $mode);
+
+            $this->stream = $fs->openFile($path, $mode);
             return true;
         } catch (FileSystem\Exception $e) {
             if ($options & STREAM_REPORT_ERRORS) {
@@ -687,48 +651,16 @@ abstract class __streamWrapper {
     }
 
     /**
-     * @param string $url
-     * @param string $mode
-     * @return FileSystem\OpenFile
-     */
-    private function _stream_open($url, $mode) {
-        $url  = self::parse($url);
-        $fs   = $url->getFileSystem();
-        $path = $url->getPath();
-        $rw   = strpos(substr($mode, 1), '+') !== false;
-
-        switch (substr($mode, 0, 1)) {
-            case 'r':
-                return $fs->openFile($path, $rw);
-            case 'w':
-                return $fs->createOrTruncateFile($path, $rw);
-            case 'a':
-                return $fs->createOrAppendFile($path, $rw);
-            case 'x':
-                return $fs->createFile($path, $rw);
-            case 'c':
-                return $fs->createOrOpenFile($path, $rw);
-            default:
-                throw new FileSystem\Exception("Invalid fopen() mode: '$mode");
-        }
-    }
-
-    /**
      * @link http://php.net/manual/en/streamwrapper.stream-read.php
-     * @param int $count
-     * @return string
      */
-    public function stream_read($count) {
+    public function stream_read(int $count):string {
         return $this->stream->read($count);
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-seek.php
-     * @param int $offset
-     * @param int $whence
-     * @return bool
      */
-    public function stream_seek($offset, $whence = SEEK_SET) {
+    public function stream_seek(int $offset, int $whence = SEEK_SET):bool {
         switch ($whence) {
             case SEEK_SET:
                 $this->stream->setPosition($offset, false);
@@ -746,12 +678,8 @@ abstract class __streamWrapper {
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-set-option.php
-     * @param int $option
-     * @param int $arg1
-     * @param int $arg2
-     * @return bool
      */
-    public function stream_set_option($option, $arg1, $arg2) {
+    public function stream_set_option(int $option, int $arg1, int $arg2):bool {
         switch ($option) {
             case STREAM_OPTION_BLOCKING:
                 $this->stream->setBlocking(!!$arg1);
@@ -777,46 +705,38 @@ abstract class __streamWrapper {
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-stat.php
-     * @return array
      */
-    public function stream_stat() {
+    public function stream_stat():array {
         $stat = $this->stream->getAttributes();
         return $stat ? $stat->toArray() : false;
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-tell.php
-     * @return int
      */
-    public function stream_tell() {
+    public function stream_tell():int {
         return $this->stream->getPosition();
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-truncate.php
-     * @param int $new_size
-     * @return bool
      */
-    public function stream_truncate($new_size) {
+    public function stream_truncate(int $new_size):bool {
         $this->stream->setSize($new_size);
         return true;
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.stream-write.php
-     * @param string $data
-     * @return int
      */
-    public function stream_write($data) {
+    public function stream_write(string $data):int {
         return $this->stream->write($data);
     }
 
     /**
      * @link http://php.net/manual/en/streamwrapper.unlink.php
-     * @param string $url
-     * @return bool
      */
-    public function unlink($url) {
+    public function unlink(string $url):bool {
         $url = self::parse($url);
         $url->getFileSystem()->delete($url->getPath());
         return true;
@@ -824,11 +744,8 @@ abstract class __streamWrapper {
 
     /**
      * @link http://php.net/manual/en/streamwrapper.url-stat.php
-     * @param string $url
-     * @param int    $flags
-     * @return array
      */
-    public function url_stat($url, $flags) {
+    public function url_stat(string $url, int $flags):array {
         try {
             $url = self::parse($url);
             return $url->getFileSystem()->getAttributes(
